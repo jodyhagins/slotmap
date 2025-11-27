@@ -7,44 +7,13 @@
 #ifndef WJH_SLOTMAP_073D1EC2FEF04177914D3CC646306810
 #define WJH_SLOTMAP_073D1EC2FEF04177914D3CC646306810
 
+#include "detail.hpp"
+
 #include <compare>
 #include <cstddef>
-#include <cstdint>
 #include <functional>
 
 namespace wjh::slotmap {
-
-namespace detail {
-
-// Helper to select the appropriate storage type based on total bit count
-template <unsigned TotalBits>
-struct storage_type;
-
-template <>
-struct storage_type<32>
-{
-    using type = std::uint32_t;
-};
-
-template <>
-struct storage_type<64>
-{
-    using type = std::uint64_t;
-};
-
-#ifdef __UINT128_TYPE__
-template <>
-struct storage_type<128>
-{
-    using type = unsigned __int128;
-};
-#endif
-
-// Helper alias for cleaner code
-template <unsigned TotalBits>
-using storage_type_t = typename storage_type<TotalBits>::type;
-
-} // namespace detail
 
 /**
  * A type-safe, bit-packed key with compile-time validation
@@ -73,17 +42,110 @@ requires requires {
     typename detail::storage_type_t<IndexBits + VersionBits + UserBits>;
 }
 class Key
+: private detail::
+      KeyBase<detail::storage_type_t<IndexBits + VersionBits + UserBits>, T>
 {
     static constexpr unsigned TotalBits = IndexBits + VersionBits + UserBits;
+    using Base = detail::KeyBase<detail::storage_type_t<TotalBits>, T>;
 
 public:
-    using value_type = detail::storage_type_t<TotalBits>;
-    using tag_type = T;
+    using value_type = typename Base::value_type;
+    using tag_type = typename Base::tag_type;
+
+    struct Index
+    {
+        using value_type = detail::type_with_at_least_t<IndexBits>;
+        value_type value;
+
+        constexpr operator value_type () const { return value; }
+    };
+
+    struct Version
+    {
+        using value_type = detail::type_with_at_least_t<VersionBits>;
+        value_type value;
+
+        constexpr operator value_type () const { return value; }
+    };
+
+    struct User
+    {
+        using value_type = detail::type_with_at_least_t<UserBits>;
+        value_type value;
+
+        constexpr operator value_type () const { return value; }
+    };
+
+    using Base::Base;
+
+    constexpr Key(Index index, Version version, User user = {0}) noexcept
+    : Base(static_cast<value_type>(
+        (index.value & index_mask) |
+        safe_shift_left(version.value & version_mask, version_shift) |
+        safe_shift_left(user.value & user_mask, user_shift)))
+    { }
+
+    [[nodiscard]]
+    constexpr Index index() const noexcept
+    {
+        return Index{static_cast<Index::value_type>(Base::bits_ & index_mask)};
+    }
+
+    [[nodiscard]]
+    constexpr Version version() const noexcept
+    {
+        return Version{static_cast<Version::value_type>(
+            safe_shift_right(Base::bits_, version_shift) & version_mask)};
+    }
+
+    [[nodiscard]]
+    constexpr User user() const noexcept
+    {
+        return User{static_cast<User::value_type>(
+            safe_shift_right(Base::bits_, user_shift) & user_mask)};
+    }
+
+    // Create a new key with modified user bits
+    [[nodiscard]]
+    constexpr Key with_user(User new_user) const noexcept
+    {
+        // Clear existing user bits and set new ones
+        auto const cleared = Base::bits_ &
+            ~safe_shift_left(user_mask, user_shift);
+        auto const updated = cleared |
+            safe_shift_left(new_user.value & user_mask, user_shift);
+
+        Key result;
+        result.Base::bits_ = updated;
+        return result;
+    }
+
+    [[nodiscard]]
+    constexpr value_type to_underlying() const noexcept
+    {
+        return Base::bits_;
+    }
+
+    // Create a null key (all bits zero)
+    [[nodiscard]]
+    static constexpr Key null() noexcept
+    {
+        return Key{};
+    }
+
+    [[nodiscard]]
+    constexpr bool is_null() const noexcept
+    {
+        return Base::bits_ == value_type{0};
+    }
+
+    [[nodiscard]]
+    constexpr std::size_t hash() const noexcept
+    {
+        return detail::hash_bits(Base::bits_);
+    }
 
 private:
-    value_type bits_;
-
-    // Helper to compute mask safely (handles 0-bit case)
     template <unsigned Bits>
     static constexpr value_type make_mask() noexcept
     {
@@ -102,12 +164,6 @@ private:
     // Bit positions for each field (index starts at bit 0)
     static constexpr unsigned version_shift = IndexBits;
     static constexpr unsigned user_shift = IndexBits + VersionBits;
-
-public:
-    // Default constructor: creates a null key (all bits zero)
-    constexpr Key() noexcept
-    : bits_{0}
-    { }
 
     // Helper to shift left safely (handles 0-bit or full-width shifts)
     static constexpr value_type safe_shift_left(
@@ -131,115 +187,56 @@ public:
         return val >> shift;
     }
 
-public:
-    // Construct a key from its components
-    constexpr Key(
-        value_type index,
-        value_type version,
-        value_type user = 0) noexcept
-    : bits_{static_cast<value_type>(
-        (index & index_mask) |
-        safe_shift_left(version & version_mask, version_shift) |
-        safe_shift_left(user & user_mask, user_shift))}
-    { }
-
-    // Extract the index field
-    [[nodiscard]]
-    constexpr value_type index() const noexcept
-    {
-        return bits_ & index_mask;
-    }
-
-    // Extract the version field
-    [[nodiscard]]
-    constexpr value_type version() const noexcept
-    {
-        return safe_shift_right(bits_, version_shift) & version_mask;
-    }
-
-    // Extract the user field
-    [[nodiscard]]
-    constexpr value_type user() const noexcept
-    {
-        return safe_shift_right(bits_, user_shift) & user_mask;
-    }
-
-    // Create a new key with modified user bits (immutable operation)
-    [[nodiscard]]
-    constexpr Key with_user(value_type new_user) const noexcept
-    {
-        // Clear existing user bits and set new ones
-        value_type cleared = bits_ & ~safe_shift_left(user_mask, user_shift);
-        value_type updated = cleared |
-            safe_shift_left(new_user & user_mask, user_shift);
-
-        Key result;
-        result.bits_ = updated;
-        return result;
-    }
-
-    // Get the raw underlying bits
-    [[nodiscard]]
-    constexpr value_type to_underlying() const noexcept
-    {
-        return bits_;
-    }
-
-    // Create a null key (all bits zero)
-    [[nodiscard]]
-    static constexpr Key null() noexcept
-    {
-        return Key{};
-    }
-
-    // Check if this key is null (all bits zero)
-    [[nodiscard]]
-    constexpr bool is_null() const noexcept
-    {
-        return bits_ == value_type{0};
-    }
-
-    // Compute hash of this key
-    [[nodiscard]]
-    constexpr std::size_t hash() const noexcept
-    {
-        // For types that fit in size_t, just use the bits directly
-        if constexpr (sizeof(value_type) <= sizeof(std::size_t)) {
-            return static_cast<std::size_t>(bits_);
-        } else {
-            // For 128-bit types on 64-bit platforms, fold the upper and lower
-            // halves This is a simple hash that preserves the constexpr
-            // requirement
-            auto lower = static_cast<std::size_t>(bits_);
-            auto upper = static_cast<std::size_t>(bits_ >> 64);
-            return lower ^ upper;
-        }
-    }
-
     // Equality comparison (defaulted)
     [[nodiscard]]
-    constexpr bool
-    operator == (Key const &) const noexcept = default;
+    friend constexpr bool
+    operator == (Key const & x, Key const & y) noexcept
+    {
+        return x.Base::bits_ == y.Base::bits_;
+    }
 
     // Three-way comparison (defaulted)
     // This compares the entire bit pattern, giving lexicographic ordering
     [[nodiscard]]
-    constexpr auto
-    operator <=> (Key const &) const noexcept = default;
+    friend constexpr auto
+    operator <=> (Key const & x, Key const & y) noexcept
+    {
+        return x.Base::bits_ <=> y.Base::bits_;
+    }
 };
+
+template <
+    unsigned IndexBits,
+    unsigned VersionBits,
+    unsigned UserBits,
+    typename T = void>
+using TrivialKey =
+    slotmap::Key<IndexBits, VersionBits, UserBits, detail::Trivial<T>>;
 
 } // namespace wjh::slotmap
 
 namespace wjh {
+
 template <
     unsigned IndexBits,
     unsigned VersionBits,
     unsigned UserBits,
     typename T = void>
 using SlotMapKey = slotmap::Key<IndexBits, VersionBits, UserBits, T>;
+
+template <
+    unsigned IndexBits,
+    unsigned VersionBits,
+    unsigned UserBits,
+    typename T = void>
+using TrivialSlotMapKey =
+    slotmap::TrivialKey<IndexBits, VersionBits, UserBits, T>;
+
 } // namespace wjh
 
-// std::hash specialization for Key
+/**
+ * Specialization of std::hash for wjh::slotmap::Key.
+ */
 template <
     unsigned IndexBits,
     unsigned VersionBits,
@@ -248,7 +245,7 @@ template <
 struct std::hash<wjh::slotmap::Key<IndexBits, VersionBits, UserBits, T>>
 {
     [[nodiscard]]
-    constexpr std::size_t
+    std::size_t
     operator () (wjh::slotmap::Key<IndexBits, VersionBits, UserBits, T> const &
                      key) const noexcept
     {

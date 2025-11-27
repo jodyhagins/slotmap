@@ -1,0 +1,161 @@
+// ----------------------------------------------------------------------
+// Copyright 2025 Jody Hagins
+// Distributed under the MIT Software License
+// See accompanying file LICENSE or copy at
+// https://opensource.org/licenses/MIT
+// ----------------------------------------------------------------------
+#ifndef WJH_SLOTMAP_CA3F4DEEB84042E584DF898CE8D8E93A
+#define WJH_SLOTMAP_CA3F4DEEB84042E584DF898CE8D8E93A
+
+#include <cstddef>
+#include <cstdint>
+#include <type_traits>
+
+namespace wjh::slotmap::detail {
+
+template <unsigned NumBits, typename = std::true_type>
+struct type_with_at_least;
+
+template <unsigned N>
+struct type_with_at_least<N, std::bool_constant<(N <= 8 && N >= 0)>>
+{
+    using type = std::uint8_t;
+};
+
+template <unsigned N>
+struct type_with_at_least<N, std::bool_constant<(N <= 16 && N > 8)>>
+
+{
+    using type = std::uint16_t;
+};
+
+template <unsigned N>
+struct type_with_at_least<N, std::bool_constant<(N <= 32 && N > 16)>>
+{
+    using type = std::uint32_t;
+};
+
+template <unsigned N>
+struct type_with_at_least<N, std::bool_constant<(N <= 64 && N > 32)>>
+{
+    using type = std::uint64_t;
+};
+#ifdef __SIZEOF_INT128__
+template <unsigned N>
+struct type_with_at_least<N, std::bool_constant<(N <= 128 && N > 64)>>
+{
+    using type = unsigned __int128;
+};
+#endif
+
+template <unsigned N>
+using type_with_at_least_t = typename type_with_at_least<N>::type;
+
+// Helper to select the appropriate storage type based on total bit count
+template <unsigned TotalBits>
+struct storage_type;
+
+template <>
+struct storage_type<32>
+{
+    using type = std::uint32_t;
+};
+
+template <>
+struct storage_type<64>
+{
+    using type = std::uint64_t;
+};
+
+#ifdef __SIZEOF_INT128__
+template <>
+struct storage_type<128>
+{
+    using type = unsigned __int128;
+};
+#endif
+
+// Helper alias for cleaner code
+template <unsigned TotalBits>
+using storage_type_t = typename storage_type<TotalBits>::type;
+
+template <typename T>
+struct Trivial
+{
+    using type = T;
+};
+
+template <typename ValueTypeT, typename TagTypeT>
+struct KeyBase
+{
+    using value_type = ValueTypeT;
+    using tag_type = TagTypeT;
+
+    value_type bits_;
+
+    constexpr KeyBase()
+    : bits_(0)
+    { }
+
+protected:
+    explicit constexpr KeyBase(value_type b)
+    : bits_(b)
+    { }
+};
+
+template <typename ValueTypeT, typename TagTypeT>
+struct KeyBase<ValueTypeT, Trivial<TagTypeT>>
+{
+    using value_type = ValueTypeT;
+    using tag_type = TagTypeT;
+
+    value_type bits_;
+
+    constexpr KeyBase() = default;
+
+protected:
+    explicit constexpr KeyBase(value_type b)
+    : bits_(b)
+    { }
+};
+
+// Constexpr hash function based on splitmix64
+// This is a fast, high-quality hash with good avalanche properties
+constexpr std::uint_fast64_t
+splitmix64(std::uint_fast64_t x) noexcept
+{
+    x += 0x9e37'79b9'7f4a'7c15ULL;
+    x = (x ^ (x >> 30)) * 0xbf58'476d'1ce4'e5b9ULL;
+    x = (x ^ (x >> 27)) * 0x94d0'49bb'1331'11ebULL;
+    return x ^ (x >> 31);
+}
+
+// Hash for 32-bit values
+constexpr std::size_t
+hash_bits(std::uint32_t x) noexcept
+{
+    return static_cast<std::size_t>(splitmix64(x));
+}
+
+// Hash for 64-bit values
+constexpr std::size_t
+hash_bits(std::uint64_t x) noexcept
+{
+    return static_cast<std::size_t>(splitmix64(x));
+}
+
+#ifdef __SIZEOF_INT128__
+// Hash for 128-bit values
+constexpr std::size_t
+hash_bits(unsigned __int128 x) noexcept
+{
+    auto lower = static_cast<std::uint64_t>(x);
+    auto upper = static_cast<std::uint64_t>(x >> 64);
+    // Combine the two halves with another round of mixing
+    return static_cast<std::size_t>(splitmix64(lower ^ splitmix64(upper)));
+}
+#endif
+
+} // namespace wjh::slotmap::detail
+
+#endif // WJH_SLOTMAP_CA3F4DEEB84042E584DF898CE8D8E93A
