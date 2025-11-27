@@ -1,0 +1,8 @@
+build/
+.build/
+build
+
+.env
+.idea/
+
+.*.swp
