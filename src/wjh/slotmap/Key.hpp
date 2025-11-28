@@ -18,11 +18,14 @@ namespace wjh::slotmap {
 /**
  * A type-safe, bit-packed key with compile-time validation
  *
- * @tparam IndexBits  Number of bits allocated for the index field
+ * @tparam IndexBits  Number of bits allocated for the index field. Must be
+ * greater than 0.
  *
- * @tparam VersionBits  Number of bits allocated for the version field
+ * @tparam VersionBits  Number of bits allocated for the version field. Must be
+ * greater than 0.
  *
- * @tparam UserBits  Number of bits allocated for user-defined data
+ * @tparam UserBits  Number of bits allocated for user-defined data. If 0, there
+ * are no user controlled bits.
  *
  * @tparam T  Phantom type for type safety (not stored, only for type
  * distinction)
@@ -30,23 +33,24 @@ namespace wjh::slotmap {
  * The sum of IndexBits + VersionBits + UserBits must equal 32, 64, or 128.
  * 128-bit keys are only supported on platforms with __uint128_t.
  *
- * Bit layout: [user][version][index] from MSB to LSB This ordering ensures that
- * index comparisons dominate in sorting.
+ * Bit layout: [user][version][index] from MSB to LSB.
  */
 template <
     unsigned IndexBits,
     unsigned VersionBits,
     unsigned UserBits,
     typename T = void>
-requires requires {
-    typename detail::storage_type_t<IndexBits + VersionBits + UserBits>;
-}
+requires(
+    IndexBits > 0 && VersionBits > 0 &&
+    requires {
+        typename detail::storage_type_t<IndexBits + VersionBits + UserBits>;
+    })
 class Key
 : private detail::
       KeyBase<detail::storage_type_t<IndexBits + VersionBits + UserBits>, T>
 {
-    static constexpr unsigned TotalBits = IndexBits + VersionBits + UserBits;
-    using Base = detail::KeyBase<detail::storage_type_t<TotalBits>, T>;
+    static constexpr unsigned num_bits = IndexBits + VersionBits + UserBits;
+    using Base = detail::KeyBase<detail::storage_type_t<num_bits>, T>;
 
 public:
     using value_type = typename Base::value_type;
@@ -54,7 +58,8 @@ public:
 
     struct Index
     {
-        using value_type = detail::type_with_at_least_t<IndexBits>;
+        static constexpr unsigned num_bits = IndexBits;
+        using value_type = detail::type_with_at_least_t<num_bits>;
         value_type value;
 
         constexpr operator value_type () const { return value; }
@@ -62,7 +67,8 @@ public:
 
     struct Version
     {
-        using value_type = detail::type_with_at_least_t<VersionBits>;
+        static constexpr unsigned num_bits = VersionBits;
+        using value_type = detail::type_with_at_least_t<num_bits>;
         value_type value;
 
         constexpr operator value_type () const { return value; }
@@ -70,7 +76,8 @@ public:
 
     struct User
     {
-        using value_type = detail::type_with_at_least_t<UserBits>;
+        static constexpr unsigned num_bits = UserBits;
+        using value_type = detail::type_with_at_least_t<num_bits>;
         value_type value;
 
         constexpr operator value_type () const { return value; }
@@ -170,7 +177,7 @@ private:
         value_type val,
         unsigned shift) noexcept
     {
-        if (shift >= TotalBits) {
+        if (shift >= num_bits) {
             return value_type{0};
         }
         return val << shift;
@@ -181,7 +188,7 @@ private:
         value_type val,
         unsigned shift) noexcept
     {
-        if (shift >= TotalBits) {
+        if (shift >= num_bits) {
             return value_type{0};
         }
         return val >> shift;
