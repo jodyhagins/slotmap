@@ -167,9 +167,11 @@ private:
     naked_size_type size_;               // Number of alive elements
     naked_size_type slots_per_slab_;     // Power of 2, set at construction
     unsigned log2_slots_per_slab_;       // For fast division
-    naked_index_type next_slab_base_index_;
+    naked_size_type next_slab_base_index_;  // Must be size_type to avoid overflow
 };
 ```
+
+**Important**: `next_slab_base_index_` must be `naked_size_type` (not `naked_index_type`) because it needs to hold values up to `2^IndexBits` (one past the max valid index) to detect when the index space is exhausted.
 
 ### Index to Slab Mapping
 
@@ -473,7 +475,7 @@ bool use(key_type key, F&& func) const;
 - **Effect**: If `key` is valid and refers to an alive element, invokes `func(value)`
 - **Returns**: `true` if element was found and `func` was called, `false` otherwise
 - **Callable Signature**: `void(T&)` or `void(T const&)` for const overload
-- **Note**: Returns `false` for null keys without accessing any slab
+- **Note**: Null keys return `false` via normal validation (version 0 never matches slot 0's version ≥1)
 
 #### contains()
 
@@ -482,7 +484,7 @@ bool contains(key_type key) const;
 ```
 
 - **Returns**: `true` if `key` refers to an alive element, `false` otherwise
-- **Note**: Returns `false` for null keys without accessing any slab
+- **Implementation**: Delegates to `use()` with a no-op callable
 
 ### Modifiers
 
@@ -637,11 +639,16 @@ class Slab {
 public:
     using slot_type = Slot<T, SizeT, VersionT>;  // Note: SizeT for next-link
 
+    struct EmplaceResult {
+        VersionT version;  // Version to use in returned key
+        SizeT next;        // Next free slot (captured before emplace overwrites storage)
+    };
+
     static std::unique_ptr<Slab> create(SizeT slots_per_slab);
 
     // Lifecycle management (uses alive bitmap)
     template <typename... Args>
-    VersionT emplace(IndexT index, Args&&... args);
+    EmplaceResult emplace(IndexT index, Args&&... args);
     bool destroy(IndexT index);  // Returns false if slot is now dead
     bool is_alive(IndexT index) const noexcept;
 
@@ -1063,12 +1070,12 @@ RC_GTEST_PROP(SlotMap, insert_find_roundtrip, ()) {
 
 ## 🚀 RESUME HERE - Next Agent Instructions
 
-**Status:** Phase 2 is complete. Begin Phase 3.
+**Status:** Phase 3 is complete. Begin Phase 4.
 
 **What's done:**
 - `src/wjh/slotmap/detail/Slot.hpp` / `Slot.ipp` - Complete with tests
 - `src/wjh/slotmap/detail/Slab.hpp` / `Slab.ipp` - Complete with tests (includes alive bitmap, emplace, destroy)
-- `src/wjh/slotmap/SlotMap.hpp` / `SlotMap.ipp` - Basic structure complete with tests
+- `src/wjh/slotmap/SlotMap.hpp` / `SlotMap.ipp` - Core operations complete with tests
 - Tests pass: `ctest --output-on-failure --test-dir build`
 
 **Key design decisions to understand:**
@@ -1079,13 +1086,21 @@ RC_GTEST_PROP(SlotMap, insert_find_roundtrip, ()) {
 
 3. **Slot uses `size_type` for next-link**: So it can store the sentinel. When reading from slot, you get `size_type`; when checking for end-of-list, compare with `end_of_free_list`.
 
-4. **Slab manages lifecycle**: `Slab::emplace(index, args...)` and `Slab::destroy(index)` handle the alive bitmap and version management. SlotMap should use these, not access slots directly for lifecycle.
+4. **Slab manages lifecycle**: `Slab::emplace(index, args...)` returns `EmplaceResult{version, next}` and `Slab::destroy(index)` handles the alive bitmap and version management. SlotMap should use these, not access slots directly for lifecycle.
 
 5. **All indices usable**: Indices 0 through `2^IndexBits - 1` can all store values. None are reserved.
 
+6. **`next_slab_base_index_` is `naked_size_type`**: Not `naked_index_type`! It must hold values up to `2^IndexBits` to detect index space exhaustion. This was a bug that was fixed.
+
+7. **Null key handling**: No explicit null key checks. Null keys (version=0, index=0) fail validation naturally because slot 0 has version ≥1. This is simpler and consistent.
+
+8. **DRY pattern for const/non-const**: Non-const `get_slab()` and `use()` delegate to const versions with `const_cast`. Eliminates code duplication.
+
+9. **`contains()` uses `use()`**: Implemented as `use(key, [](auto const&){})` - simple one-liner reusing existing validation.
+
 **Next steps:**
 1. Read this DESIGN.md thoroughly
-2. Begin Phase 3: Implement `emplace()`, `erase()`, `use()`, `contains()`
+2. Begin Phase 4: Implement `for_each()`, `clear()`, `reset()`
 3. Follow the coding standards in CLAUDE.md
 4. Build: `cmake --build build`
 5. Test: `ctest --output-on-failure --test-dir build`
@@ -1097,36 +1112,43 @@ RC_GTEST_PROP(SlotMap, insert_find_roundtrip, ()) {
 
 ---
 
-### Phase 3: Core Operations
+### Phase 3: Core Operations ✅ COMPLETED
 
-- [ ] Implement `emplace()`
-  - [ ] Check if free list empty, allocate new slab if needed
-  - [ ] Pop from free list (handle `end_of_free_list` sentinel)
-  - [ ] Use `Slab::emplace()` which handles alive bit and returns version
-  - [ ] Build and return key with index, version, user=0
-  - [ ] Increment size
-  - [ ] Exception safety: if construction fails, slot stays in free list
+- [x] Implement `emplace()`
+  - [x] Check if free list empty, allocate new slab if needed
+  - [x] Pop from free list (handle `end_of_free_list` sentinel)
+  - [x] Use `Slab::emplace()` which returns `EmplaceResult{version, next}`
+  - [x] Build and return key with index, version, user=0
+  - [x] Increment size
+  - [x] Exception safety: if construction fails, slot stays in free list
 
-- [ ] Implement `erase()`
-  - [ ] Key validation (null check, bounds check, version match, alive check)
-  - [ ] Use `Slab::destroy()` which handles alive bit, version increment, dead count
-  - [ ] If `destroy()` returns true: add to free list
-  - [ ] If `destroy()` returns false: slot is dead, check for slab recycling
-  - [ ] Decrement size
-  - [ ] Return true on success
+- [x] Implement `erase()`
+  - [x] Key validation via `get_slab()` null check, version match, alive check
+  - [x] Use `Slab::destroy()` which handles alive bit, version increment, dead count
+  - [x] If `destroy()` returns true: add to free list
+  - [x] If `destroy()` returns false: slot is dead (TODO: Phase 6 slab recycling)
+  - [x] Decrement size
+  - [x] Return true on success
 
-- [ ] Implement `use()` and `contains()`
-  - [ ] Key validation logic (same as erase)
-  - [ ] Null key fast path (return false immediately)
-  - [ ] For `use()`: invoke callable with value reference
-  - [ ] For `contains()`: just return validation result
+- [x] Implement `use()` and `contains()`
+  - [x] Const `use()` does validation and invokes callable
+  - [x] Non-const `use()` delegates to const version with const_cast
+  - [x] `contains()` delegates to `use()` with no-op callable
+  - [x] No explicit null key checks (handled by version mismatch)
 
-- [ ] Implement `allocate_new_slab()` helper
-  - [ ] Check if `next_slab_base_index_ >= end_of_free_list`
-  - [ ] Create slab, initialize free list links
-  - [ ] Update slabs vector, next_slab_base_index_
+- [x] Implement `allocate_new_slab()` helper
+  - [x] Check if `next_slab_base_index_ >= end_of_free_list`
+  - [x] Create slab, initialize free list links
+  - [x] Special case: slot 0 of first slab gets version 1 (null key avoidance)
+  - [x] Update slabs vector, next_slab_base_index_
 
-- [ ] Tests for all public interfaces
+- [x] Tests for all public interfaces
+
+**Implementation Notes from Phase 3:**
+- `Slab::emplace()` now returns `EmplaceResult` struct with both version and next (captures next before emplace overwrites storage)
+- `next_slab_base_index_` changed from `naked_index_type` to `naked_size_type` to avoid overflow when index space is exhausted
+- Non-const methods delegate to const versions to eliminate duplication
+- Comprehensive property-based tests verify interleaved emplace/erase consistency
 
 ### Phase 4: Iteration and Bulk Operations
 

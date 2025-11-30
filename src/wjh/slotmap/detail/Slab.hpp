@@ -39,9 +39,9 @@ public:
     using version_type = VersionT;
     using size_type = SizeT;
     // Use size_type for Slot's next-link type so it can hold end_of_free_list
-    using slot_type = Slot<T, SizeT, VersionT>;
+    using slot_type = Slot<T, size_type, VersionT>;
 
-    static constexpr version_type max_version = version_type::mask;
+    static constexpr auto max_version = version_type(version_type::mask);
 
     [[nodiscard]]
     static constexpr std::size_t total_bytes_needed(size_type slots_per_slab);
@@ -77,6 +77,12 @@ public:
     // Slot lifecycle management
     // ========================================================================
 
+    struct EmplaceResult
+    {
+        version_type version;
+        size_type next;
+    };
+
     /**
      * Emplace a value into a slot.
      *
@@ -88,7 +94,7 @@ public:
      * @post Slot is alive (is_alive(index) == true)
      */
     template <typename... Args>
-    version_type emplace(index_type index, Args &&... args);
+    EmplaceResult emplace(index_type index, Args &&... args);
 
     /**
      * Destroy the value in a slot.

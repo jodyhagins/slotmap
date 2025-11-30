@@ -146,7 +146,7 @@ TEST_CASE("Slab: emplace")
 
     SUBCASE("emplace returns current version") {
         // Slot starts at version 0
-        auto ver = slab->emplace(Index(0u), 42);
+        auto [ver, next] = slab->emplace(Index(0u), 42);
         REQUIRE(ver == 0);
         REQUIRE(slab->slot(0).value() == 42);
     }
@@ -161,7 +161,7 @@ TEST_CASE("Slab: emplace")
         // Set version first (simulating slot that was used before)
         slab->slot(0).set_version(TestSlab::version_type{5});
 
-        auto ver = slab->emplace(Index{0}, 100);
+        auto [ver, next] = slab->emplace(Index{0}, 100);
         REQUIRE(ver == 5);
         REQUIRE(slab->slot(0).value() == 100);
         REQUIRE(slab->is_alive(Index{0}));
@@ -487,7 +487,7 @@ TEST_CASE("Slab: lifecycle simulation")
 
     // Allocate slot 0 (remove from free list head)
     auto free_head = slab->slot(0).next(); // = 1
-    auto ver0 = slab->emplace(Index{0}, 100);
+    auto [ver0, next0] = slab->emplace(Index{0}, 100);
 
     REQUIRE(free_head == 1);
     REQUIRE(ver0 == 0);
@@ -496,7 +496,7 @@ TEST_CASE("Slab: lifecycle simulation")
 
     // Allocate slot 1
     free_head = slab->slot(1).next(); // = 2
-    auto ver1 = slab->emplace(Index{1}, 200);
+    auto [ver1, next1] = slab->emplace(Index{1}, 200);
 
     REQUIRE(free_head == 2);
     REQUIRE(ver1 == 0);
@@ -514,7 +514,7 @@ TEST_CASE("Slab: lifecycle simulation")
 
     // Re-allocate slot 0
     free_head = slab->slot(0).next(); // = 2
-    auto ver0_reuse = slab->emplace(Index{0}, 101);
+    auto [ver0_reuse, next0_reuse] = slab->emplace(Index{0}, 101);
 
     REQUIRE(free_head == 2);
     REQUIRE(ver0_reuse == 1); // version incremented from previous use
@@ -556,7 +556,7 @@ TEST_CASE("Slab: property-based emplace/destroy cycle")
         auto const value = *rc::gen::arbitrary<int>();
         auto slab = TestSlab::create(4u);
 
-        auto ver = slab->emplace(Index{0}, value);
+        auto ver = slab->emplace(Index{0}, value).version;
         RC_ASSERT(ver == 0);
         RC_ASSERT(slab->slot(0).value() == value);
         RC_ASSERT(slab->is_alive(Index{0}));

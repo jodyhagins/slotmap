@@ -92,6 +92,61 @@ public:
     ~SlotMap() = default;
 
     // ========================================================================
+    // Element Access
+    // ========================================================================
+
+    /**
+     * Access an element by key.
+     *
+     * If key is valid and refers to an alive element, invokes func(value).
+     *
+     * @param key The key to look up
+     * @param func Callable with signature void(T&) or void(T const&)
+     * @return true if element was found and func was called, false otherwise
+     */
+    template <typename F>
+    bool use(key_type key, F && func);
+
+    template <typename F>
+    bool use(key_type key, F && func) const;
+
+    /**
+     * Check if a key refers to an alive element.
+     *
+     * @param key The key to check
+     * @return true if key is valid and refers to an alive element
+     */
+    [[nodiscard]]
+    bool contains(key_type key) const;
+
+    // ========================================================================
+    // Modifiers
+    // ========================================================================
+
+    /**
+     * Construct a new element in-place.
+     *
+     * @param args Arguments to forward to T's constructor
+     * @return A valid key for the new element, or null key if no slots
+     * available
+     * @throws Any exception thrown by T's constructor (strong guarantee)
+     */
+    template <typename... Args>
+    key_type emplace(Args &&... args);
+
+    /**
+     * Erase an element by key.
+     *
+     * If key is valid, destroys the element and frees or retires the slot.
+     * May trigger slab recycling if the slot reaches max version and the
+     * slab becomes exhausted.
+     *
+     * @param key The key of the element to erase
+     * @return true if an element was erased, false otherwise
+     */
+    bool erase(key_type key);
+
+    // ========================================================================
     // Capacity
     // ========================================================================
 
@@ -127,13 +182,17 @@ private:
     naked_size_type size_ = 0;
     naked_size_type slots_per_slab_;
     unsigned log2_slots_per_slab_ = 0;
-    naked_index_type next_slab_base_index_ = 0;
+    naked_size_type next_slab_base_index_ = 0;
 
     static constexpr size_type compute_default_slab_size() noexcept;
     static void validate_slab_size(size_type slots_per_slab);
     slot_type & get_slot(index_type idx) noexcept;
     slot_type const & get_slot(index_type idx) const noexcept;
+    slab_type * get_slab(index_type idx) noexcept;
+    slab_type const * get_slab(index_type idx) const noexcept;
     void clear_slabs() noexcept;
+    bool allocate_new_slab();
+    void initialize_slab_free_list(slab_type * slab, index_type base);
 };
 
 } // namespace wjh::slotmap

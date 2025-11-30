@@ -27,12 +27,13 @@ class SlotMap
 
 public:
     using size_type = typename Base::size_type;
+    using naked_size_type = typename size_type::value_type;
     using Base::Base;
 
     template <typename SizeT>
     explicit SlotMap(SizeT slots_per_slab)
-    requires requires { size_type{slots_per_slab}; }
-    : Base(size_type{slots_per_slab})
+    requires std::is_integral_v<SizeT>
+    : Base(size_type{static_cast<naked_size_type>(slots_per_slab)})
     { }
 };
 
@@ -163,7 +164,8 @@ TEST_CASE("SlotMap: free list sentinel storage in Slot")
 
     SUBCASE("size_type slot can store sentinel") {
         // Create a slot using size_type for the next-link (as Slab now does)
-        using slot_type = wjh::slotmap::detail::Slot<int, size_type, version_type>;
+        using slot_type =
+            wjh::slotmap::detail::Slot<int, size_type, version_type>;
         alignas(slot_type) std::byte storage[sizeof(slot_type)]{};
         auto & slot = *::new (storage) slot_type{};
 
@@ -179,17 +181,19 @@ TEST_CASE("SlotMap: free list sentinel storage in Slot")
     SUBCASE("index_type slot would truncate sentinel") {
         // This demonstrates that index_type cannot hold the sentinel
         // (it wraps around to 0 due to overflow)
-        using bad_slot_type = wjh::slotmap::detail::Slot<int, index_type, version_type>;
+        using bad_slot_type =
+            wjh::slotmap::detail::Slot<int, index_type, version_type>;
         alignas(bad_slot_type) std::byte storage[sizeof(bad_slot_type)]{};
         auto & slot = *::new (storage) bad_slot_type{};
 
         // Store a truncated version (simulating what would happen)
-        auto truncated = index_type(static_cast<index_type::value_type>(sentinel.value));
+        auto truncated = index_type(
+            static_cast<index_type::value_type>(sentinel.value));
         slot.set_next(truncated);
 
         // The retrieved value is NOT the sentinel - it wrapped to 0
         CHECK(slot.next() != size_type(sentinel));
-        CHECK(slot.next().value == 0u);  // 0x100 truncated to uint8_t = 0
+        CHECK(slot.next().value == 0u); // 0x100 truncated to uint8_t = 0
 
         slot.~bad_slot_type();
     }
@@ -316,6 +320,484 @@ TEST_CASE("SlotMap: wjh namespace alias")
 
     CHECK(map.is_empty());
     CHECK(map.size() == std::uint16_t(0));
+}
+
+// ============================================================================
+// Emplace Tests
+// ============================================================================
+
+TEST_CASE("SlotMap: emplace returns valid key")
+{
+    SlotMap<Key<16, 16, 0, int>> map;
+
+    SUBCASE("single emplace") {
+        auto key = map.emplace(42);
+
+        CHECK(not key.is_null());
+        CHECK(map.contains(key));
+        CHECK(map.size().value == 1);
+        CHECK(not map.is_empty());
+    }
+
+    SUBCASE("emplace with various types") {
+        SlotMap<Key<16, 16, 0, std::string>> str_map;
+        auto key = str_map.emplace("hello");
+
+        CHECK(not key.is_null());
+        CHECK(str_map.contains(key));
+    }
+
+    SUBCASE("emplace with move-only type") {
+        SlotMap<Key<16, 16, 0, std::unique_ptr<int>>> ptr_map;
+        auto key = ptr_map.emplace(std::make_unique<int>(42));
+
+        CHECK(not key.is_null());
+        CHECK(ptr_map.contains(key));
+    }
+}
+
+TEST_CASE("SlotMap: emplace constructs value correctly")
+{
+    SlotMap<Key<16, 16, 0, int>> map;
+
+    auto key = map.emplace(42);
+    bool found = false;
+    map.use(key, [&](int const & v) {
+        found = true;
+        CHECK(v == 42);
+    });
+    CHECK(found);
+}
+
+TEST_CASE("SlotMap: emplace never returns version 0 at index 0")
+{
+    SlotMap<Key<16, 16, 0, int>> map(4u);
+
+    // First emplace should get index 0 but version >= 1
+    auto key = map.emplace(1);
+    CHECK(key.index().value == 0);
+    CHECK(key.version().value >= 1);
+}
+
+TEST_CASE("SlotMap: multiple emplaces")
+{
+    SlotMap<Key<16, 16, 0, int>> map;
+    std::vector<Key<16, 16, 0, int>> keys;
+
+    for (int i = 0; i < 100; ++i) {
+        auto key = map.emplace(i);
+        CHECK(not key.is_null());
+        keys.push_back(key);
+    }
+
+    CHECK(map.size().value == 100);
+
+    // All keys should be valid and contain correct values
+    for (std::size_t i = 0; i < 100; ++i) {
+        int value = -1;
+        bool found = map.use(keys[i], [&](int const & v) { value = v; });
+        CHECK(found);
+        CHECK(value == static_cast<int>(i));
+    }
+}
+
+// ============================================================================
+// Erase Tests
+// ============================================================================
+
+TEST_CASE("SlotMap: erase removes element")
+{
+    SlotMap<Key<16, 16, 0, int>> map;
+
+    auto key = map.emplace(42);
+    CHECK(map.erase(key));
+    CHECK(not map.contains(key));
+    CHECK(map.size().value == 0);
+    CHECK(map.is_empty());
+}
+
+TEST_CASE("SlotMap: erase returns false for invalid key")
+{
+    SlotMap<Key<16, 16, 0, int>> map;
+
+    auto key = map.emplace(42);
+    map.erase(key);
+
+    // Try erasing already-erased key
+    CHECK(not map.erase(key));
+}
+
+TEST_CASE("SlotMap: erase returns false for null key")
+{
+    SlotMap<Key<16, 16, 0, int>> map;
+
+    CHECK(not map.erase(Key<16, 16, 0, int>::null()));
+}
+
+TEST_CASE("SlotMap: key version increments after erase and re-emplace")
+{
+    SlotMap<Key<16, 16, 0, int>> map(1u); // Single slot slab
+
+    auto key1 = map.emplace(1);
+    auto v1 = key1.version();
+    auto idx1 = key1.index();
+    map.erase(key1);
+
+    auto key2 = map.emplace(2);
+    // Same index (only slot reused), but version incremented
+    CHECK(key2.index() == idx1);
+    CHECK(key2.version().value == v1.value + 1);
+
+    // Old key no longer valid
+    CHECK(not map.contains(key1));
+    CHECK(map.contains(key2));
+}
+
+TEST_CASE("SlotMap: destructor is called on erase")
+{
+    static int destructor_count = 0;
+
+    struct Counter
+    {
+        ~Counter() { ++destructor_count; }
+    };
+
+    destructor_count = 0;
+
+    {
+        SlotMap<Key<16, 16, 0, Counter>> map;
+        auto key = map.emplace();
+        CHECK(destructor_count == 0);
+        map.erase(key);
+        CHECK(destructor_count == 1);
+    }
+    // One more from slab destructor? No - already destroyed
+}
+
+// ============================================================================
+// Null Key Tests
+// ============================================================================
+
+TEST_CASE("SlotMap: null key handling")
+{
+    SlotMap<Key<16, 16, 0, int>> map;
+    auto null_key = Key<16, 16, 0, int>::null();
+
+    SUBCASE("contains returns false for null key") {
+        CHECK(not map.contains(null_key));
+    }
+
+    SUBCASE("use returns false for null key") {
+        bool called = false;
+        CHECK(not map.use(null_key, [&](int &) { called = true; }));
+        CHECK(not called);
+    }
+
+    SUBCASE("erase returns false for null key") {
+        CHECK(not map.erase(null_key));
+    }
+}
+
+// ============================================================================
+// Use Tests
+// ============================================================================
+
+TEST_CASE("SlotMap: use invokes callable with value")
+{
+    SlotMap<Key<16, 16, 0, int>> map;
+    auto key = map.emplace(42);
+
+    SUBCASE("non-const use") {
+        int value = 0;
+        bool found = map.use(key, [&](int & v) { value = v; });
+        CHECK(found);
+        CHECK(value == 42);
+    }
+
+    SUBCASE("const use") {
+        int value = 0;
+        auto const & cmap = map;
+        bool found = cmap.use(key, [&](int const & v) { value = v; });
+        CHECK(found);
+        CHECK(value == 42);
+    }
+
+    SUBCASE("modify through use") {
+        map.use(key, [](int & v) { v = 100; });
+
+        int value = 0;
+        map.use(key, [&](int const & v) { value = v; });
+        CHECK(value == 100);
+    }
+}
+
+TEST_CASE("SlotMap: use returns false for stale key")
+{
+    SlotMap<Key<16, 16, 0, int>> map(1u);
+
+    auto key1 = map.emplace(1);
+    map.erase(key1);
+    map.emplace(2); // Reuses same slot
+
+    bool called = false;
+    CHECK(not map.use(key1, [&](int &) { called = true; }));
+    CHECK(not called);
+}
+
+// ============================================================================
+// Contains Tests
+// ============================================================================
+
+TEST_CASE("SlotMap: contains")
+{
+    SlotMap<Key<16, 16, 0, int>> map;
+
+    SUBCASE("returns true for valid key") {
+        auto key = map.emplace(42);
+        CHECK(map.contains(key));
+    }
+
+    SUBCASE("returns false after erase") {
+        auto key = map.emplace(42);
+        map.erase(key);
+        CHECK(not map.contains(key));
+    }
+
+    SUBCASE("returns false for stale version") {
+        SlotMap<Key<16, 16, 0, int>> small_map(1u);
+        auto key1 = small_map.emplace(1);
+        small_map.erase(key1);
+        auto key2 = small_map.emplace(2);
+
+        CHECK(not small_map.contains(key1));
+        CHECK(small_map.contains(key2));
+    }
+}
+
+// ============================================================================
+// Capacity Exhaustion Tests
+// ============================================================================
+
+TEST_CASE("SlotMap: capacity exhaustion returns null key")
+{
+    // Small index space: 8 bits = 256 usable indices (Key<8, 24, 0> = 32 bits)
+    SlotMap<Key<8, 24, 0, int>> map(64u);
+
+    using key_type = Key<8, 24, 0, int>;
+    std::vector<key_type> keys;
+    for (int i = 0; i < 256; ++i) {
+        auto key = map.emplace(i);
+        CHECK(not key.is_null());
+        keys.push_back(key);
+    }
+
+    CHECK(map.size().value == 256);
+
+    // 257th emplace should fail
+    auto overflow_key = map.emplace(999);
+    CHECK(overflow_key.is_null());
+    CHECK(map.size().value == 256);
+}
+
+TEST_CASE("SlotMap: can reuse slots after erase")
+{
+    // 8-bit index space = 256 slots
+    SlotMap<Key<8, 24, 0, int>> map(64u);
+
+    using key_type = Key<8, 24, 0, int>;
+
+    // Fill up
+    std::vector<key_type> keys;
+    for (int i = 0; i < 256; ++i) {
+        keys.push_back(map.emplace(i));
+    }
+
+    // Erase half
+    for (std::size_t i = 0; i < 128; ++i) {
+        map.erase(keys[i]);
+    }
+
+    CHECK(map.size().value == 128);
+
+    // Should be able to add 128 more
+    for (int i = 0; i < 128; ++i) {
+        auto key = map.emplace(1000 + i);
+        CHECK(not key.is_null());
+    }
+
+    CHECK(map.size().value == 256);
+}
+
+// ============================================================================
+// Version Exhaustion Tests
+// ============================================================================
+
+TEST_CASE("SlotMap: slot becomes dead after version exhaustion")
+{
+    // 2-bit version: versions 1, 2, 3; max_version = 3
+    // After version 3 is used, slot is dead
+    // Key<30, 2, 0> = 32 bits total
+    SlotMap<Key<30, 2, 0, int>> map(4u);
+
+    auto key1 = map.emplace(1); // version 1 (first slot of first slab)
+    auto idx1 = key1.index();
+    CHECK(key1.version().value == 1);
+    map.erase(key1);
+
+    auto key2 = map.emplace(2); // version 2, same index
+    CHECK(key2.index() == idx1);
+    CHECK(key2.version().value == 2);
+    map.erase(key2);
+
+    auto key3 = map.emplace(3); // version 3 (max), same index
+    CHECK(key3.index() == idx1);
+    CHECK(key3.version().value == 3);
+    map.erase(key3); // Slot is now dead
+
+    // Next emplace should get different index
+    auto key4 = map.emplace(4);
+    CHECK(key4.index() != idx1);
+}
+
+// ============================================================================
+// Move Operations with Data
+// ============================================================================
+
+TEST_CASE("SlotMap: move preserves data")
+{
+    SlotMap<Key<16, 16, 0, int>> map;
+    auto key1 = map.emplace(42);
+    auto key2 = map.emplace(100);
+
+    SUBCASE("move construction") {
+        auto moved = std::move(map);
+
+        CHECK(moved.size().value == 2);
+        CHECK(moved.contains(key1));
+        CHECK(moved.contains(key2));
+
+        int v1 = 0, v2 = 0;
+        moved.use(key1, [&](int const & v) { v1 = v; });
+        moved.use(key2, [&](int const & v) { v2 = v; });
+        CHECK(v1 == 42);
+        CHECK(v2 == 100);
+    }
+
+    SUBCASE("move assignment") {
+        SlotMap<Key<16, 16, 0, int>> other;
+        other = std::move(map);
+
+        CHECK(other.size().value == 2);
+        CHECK(other.contains(key1));
+        CHECK(other.contains(key2));
+    }
+}
+
+// ============================================================================
+// Property-Based Tests for Core Operations
+// ============================================================================
+
+TEST_CASE("SlotMap: property-based emplace/use roundtrip")
+{
+    rc::check("emplace then use returns same value", []() {
+        SlotMap<Key<16, 15, 1, int>> map;
+        auto const value = *rc::gen::arbitrary<int>();
+
+        auto key = map.emplace(value);
+        RC_ASSERT(not key.is_null());
+
+        int found = 0;
+        bool ok = map.use(key, [&](int const & v) { found = v; });
+        RC_ASSERT(ok);
+        RC_ASSERT(found == value);
+    });
+}
+
+TEST_CASE("SlotMap: property-based multiple values")
+{
+    rc::check("multiple emplaces all accessible", []() {
+        SlotMap<Key<16, 15, 1, int>> map;
+        auto const values = *rc::gen::container<std::vector<int>>(
+            100,
+            rc::gen::arbitrary<int>());
+
+        std::vector<Key<16, 15, 1, int>> keys;
+        for (auto v : values) {
+            keys.push_back(map.emplace(v));
+        }
+
+        RC_ASSERT(map.size().value == values.size());
+
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            int found = 0;
+            map.use(keys[i], [&](int const & v) { found = v; });
+            RC_ASSERT(found == values[i]);
+        }
+    });
+}
+
+TEST_CASE("SlotMap: property-based erase invalidates key")
+{
+    rc::check("erased keys are no longer valid", []() {
+        SlotMap<Key<16, 15, 1, int>> map;
+
+        auto const count = *rc::gen::inRange<std::size_t>(1, 50);
+        std::vector<Key<16, 15, 1, int>> keys;
+        for (std::size_t i = 0; i < count; ++i) {
+            keys.push_back(map.emplace(static_cast<int>(i)));
+        }
+
+        // Erase all
+        for (auto key : keys) {
+            RC_ASSERT(map.erase(key));
+        }
+
+        RC_ASSERT(map.is_empty());
+
+        // None should be valid
+        for (auto key : keys) {
+            RC_ASSERT(not map.contains(key));
+            RC_ASSERT(not map.erase(key));
+        }
+    });
+}
+
+TEST_CASE("SlotMap: property-based interleaved operations")
+{
+    rc::check("interleaved emplace/erase maintains consistency", []() {
+        SlotMap<Key<16, 15, 1, int>> map;
+        std::map<Key<16, 15, 1, int>, int> reference;
+
+        auto const ops = *rc::gen::inRange<std::size_t>(10, 100);
+
+        for (std::size_t i = 0; i < ops; ++i) {
+            bool do_insert = *rc::gen::arbitrary<bool>();
+
+            if (do_insert || reference.empty()) {
+                auto value = *rc::gen::arbitrary<int>();
+                auto key = map.emplace(value);
+                RC_ASSERT(not key.is_null());
+                reference[key] = value;
+            } else {
+                // Pick a random key to erase
+                auto it = reference.begin();
+                std::advance(
+                    it,
+                    *rc::gen::inRange<std::size_t>(0, reference.size()));
+
+                RC_ASSERT(map.erase(it->first));
+                reference.erase(it);
+            }
+        }
+
+        RC_ASSERT(map.size().value == reference.size());
+
+        for (auto const & [key, expected] : reference) {
+            int found = 0;
+            RC_ASSERT(map.use(key, [&](int const & v) { found = v; }));
+            RC_ASSERT(found == expected);
+        }
+    });
 }
 
 } // anonymous namespace

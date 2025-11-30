@@ -101,16 +101,16 @@ operator delete (void * ptr)
 
 template <typename T, typename IndexT, typename VersionT, typename SizeT>
 template <typename... Args>
-Slab<T, IndexT, VersionT, SizeT>::version_type
+Slab<T, IndexT, VersionT, SizeT>::EmplaceResult
 Slab<T, IndexT, VersionT, SizeT>::
 emplace(index_type index, Args &&... args)
 {
     assert(not is_alive(index));
     auto & s = slots()[index];
-    auto const ver = s.version();
+    auto result = EmplaceResult{.version = s.version(), .next = s.next()};
     s.emplace(std::forward<Args>(args)...);
     set_alive(index, true);
-    return version_type{ver};
+    return result;
 }
 
 template <typename T, typename IndexT, typename VersionT, typename SizeT>
