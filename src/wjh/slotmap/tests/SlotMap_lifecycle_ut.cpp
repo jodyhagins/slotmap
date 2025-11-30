@@ -46,7 +46,7 @@ TEST_CASE("SlotMap: type aliases")
     using TestMap = SlotMap<Key<int, 16, 16>>;
 
     static_assert(std::is_same_v<TestMap::key_type, Key<int, 16, 16>>);
-    static_assert(std::is_same_v<TestMap::value_type, int>);
+    static_assert(std::is_same_v<TestMap::mapped_type, int>);
 
     // Index type should be able to hold IndexBits worth of values
     static_assert(sizeof(TestMap::index_type) * 8 >= 16);

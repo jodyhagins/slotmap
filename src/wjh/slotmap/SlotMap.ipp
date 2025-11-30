@@ -28,7 +28,7 @@ SlotMap(size_type slots_per_slab)
 template <typename KeyT>
 SlotMap<KeyT>::
 SlotMap(SlotMap const & other)
-requires std::is_copy_constructible_v<value_type>
+requires std::is_copy_constructible_v<mapped_type>
 : free_list_head_{other.free_list_head_}
 , size_{other.size_}
 , slots_per_slab_{other.slots_per_slab_}
@@ -52,7 +52,7 @@ template <typename KeyT>
 SlotMap<KeyT> &
 SlotMap<KeyT>::
 operator = (SlotMap const & other)
-requires std::is_copy_constructible_v<value_type>
+requires std::is_copy_constructible_v<mapped_type>
 {
     if (this != &other) {
         // Copy-and-swap idiom for strong exception safety
@@ -342,10 +342,10 @@ erase(key_type key)
 }
 
 template <typename KeyT>
-std::optional<typename SlotMap<KeyT>::value_type>
+std::optional<typename SlotMap<KeyT>::mapped_type>
 SlotMap<KeyT>::
 pop(key_type key)
-requires std::is_move_constructible_v<value_type>
+requires std::is_move_constructible_v<mapped_type>
 {
     auto const key_idx = key.index();
     if (auto * slab = get_slab(key_idx)) {
@@ -385,8 +385,8 @@ use(key_type key, F && func)
 {
     return const_cast<SlotMap const &>(*this).use(
         key,
-        [&func](value_type const & x) {
-            std::forward<F>(func)(const_cast<value_type &>(x));
+        [&func](mapped_type const & x) {
+            std::forward<F>(func)(const_cast<mapped_type &>(x));
         });
 }
 
@@ -416,7 +416,7 @@ bool
 SlotMap<KeyT>::
 contains(key_type key) const
 {
-    return use(key, [](value_type const &) {});
+    return use(key, [](mapped_type const &) {});
 }
 
 namespace detail {
@@ -442,8 +442,8 @@ SlotMap<KeyT>::size_type
 SlotMap<KeyT>::
 for_each(F && func)
 {
-    auto f = [&func](key_type key, value_type const & v, Break & brk) {
-        detail::invoke_for_each(func, key, const_cast<value_type &>(v), brk);
+    auto f = [&func](key_type key, mapped_type const & v, Break & brk) {
+        detail::invoke_for_each(func, key, const_cast<mapped_type &>(v), brk);
     };
     return const_cast<SlotMap const &>(*this).for_each(f);
 }

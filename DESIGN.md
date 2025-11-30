@@ -69,7 +69,7 @@ The template takes any `KeyT` that satisfies `is_key_v<KeyT>` (i.e., an instanti
 ```cpp
 // Within the class:
 using key_type = KeyT;
-using value_type = typename key_type::tag_type;     // The stored type T
+using mapped_type = typename key_type::tag_type;    // The stored type T
 using index_type = typename key_type::index_type;   // Strong type with IndexBits bits
 using version_type = typename key_type::version_type; // Strong type with VersionBits bits
 using user_type = typename key_type::user_type;     // Strong type with UserBits bits
@@ -1219,7 +1219,7 @@ RC_GTEST_PROP(SlotMap, insert_find_roundtrip, ()) {
 - [x] Tests for all public interfaces
 
 **Implementation Notes from Phase 6:**
-- `pop(key)` returns `std::optional<value_type>`, moving the value out before erasing. Only available when `std::is_move_constructible_v<T>` is true.
+- `pop(key)` returns `std::optional<mapped_type>`, moving the value out before erasing. Only available when `std::is_move_constructible_v<T>` is true.
 - `reserve(n)` pre-allocates slabs to hold at least n elements, avoiding allocations during hot paths.
 - Slab recycling: when a slot's version is exhausted, `destroy()` returns false and the slot is marked dead. When ALL slots in a slab are dead (`can_be_recycled()`), `try_recycle_slab()` moves the slab to a new index position and resets all versions to 0.
 - `Slab::recycle(first_index, last_next)` resets dead_count, re-initializes the free list chain within the slab, and clears the bitmap.

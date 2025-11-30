@@ -901,11 +901,11 @@ The compiler selects the appropriate invocation at compile-time based on what th
 template <typename F>
 size_type for_each(F && func) {
     return const_cast<SlotMap const &>(*this).for_each(
-        [&func](key_type key, value_type const & v, Break & brk) {
+        [&func](key_type key, mapped_type const & v, Break & brk) {
             detail::invoke_for_each(
                 std::forward<F>(func),
                 key,
-                const_cast<value_type &>(v),  // Cast away const for non-const overload
+                const_cast<mapped_type &>(v),  // Cast away const for non-const overload
                 brk);
         });
 }
@@ -1375,7 +1375,7 @@ Bulk removal based on predicate:
 template <typename Pred>
 size_type erase_if(Pred && pred) {
     size_type removed{0};
-    for_each([&](key_type key, value_type & value, Break &) {
+    for_each([&](key_type key, mapped_type & value, Break &) {
         if (std::invoke(pred, value)) {
             erase(key);
             ++removed;

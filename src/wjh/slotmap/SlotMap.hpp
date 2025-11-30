@@ -47,7 +47,7 @@ public:
     // ========================================================================
 
     using key_type = KeyT;
-    using value_type = typename key_type::tag_type;
+    using mapped_type = typename key_type::tag_type;
     using index_type = typename key_type::index_type;
     using version_type = typename key_type::version_type;
     using user_type = typename key_type::user_type;
@@ -104,7 +104,7 @@ public:
      * @note Only available if T is copy constructible
      */
     SlotMap(SlotMap const & other)
-    requires std::is_copy_constructible_v<value_type>;
+    requires std::is_copy_constructible_v<mapped_type>;
 
     /**
      * Copy assignment operator.
@@ -119,7 +119,7 @@ public:
      * @note Only available if T is copy constructible
      */
     SlotMap & operator = (SlotMap const & other)
-    requires std::is_copy_constructible_v<value_type>;
+    requires std::is_copy_constructible_v<mapped_type>;
 
     SlotMap(SlotMap && other) noexcept;
     SlotMap & operator = (SlotMap && other) noexcept;
@@ -193,8 +193,8 @@ public:
      * @note Only available if T is move constructible
      */
     [[nodiscard]]
-    std::optional<value_type> pop(key_type key)
-    requires std::is_move_constructible_v<value_type>;
+    std::optional<mapped_type> pop(key_type key)
+    requires std::is_move_constructible_v<mapped_type>;
 
     /**
      * Swap contents with another SlotMap.
@@ -289,7 +289,7 @@ private:
     using naked_size_type = typename size_type::value_type;
     using naked_index_type = typename index_type::value_type;
     using slab_type =
-        detail::Slab<value_type, index_type, version_type, size_type>;
+        detail::Slab<mapped_type, index_type, version_type, size_type>;
     using slot_type = typename slab_type::slot_type;
 
     std::vector<std::unique_ptr<slab_type>> slabs_{};

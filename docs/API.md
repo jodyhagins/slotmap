@@ -646,7 +646,7 @@ wjh::SlotMap<EnemyKey> enemies;
 
 ```cpp
 using key_type = KeyT;
-using value_type = typename key_type::tag_type;
+using mapped_type = typename key_type::tag_type;
 using index_type = typename key_type::index_type;
 using version_type = typename key_type::version_type;
 using user_type = typename key_type::user_type;
@@ -655,7 +655,7 @@ using size_type = typename key_type::size_type;
 
 **`key_type`**: The key type (same as template parameter `KeyT`).
 
-**`value_type`**: The stored element type (`KeyT::tag_type`).
+**`mapped_type`**: The stored element type (`KeyT::tag_type`).
 
 **`index_type`, `version_type`, `user_type`**: Strong types from the key.
 
@@ -758,7 +758,7 @@ wjh::SlotMap<MyKey> bulk_map(MyKey::size_type{16384});
 
 ```cpp
 SlotMap(SlotMap const & other)
-requires std::is_copy_constructible_v<value_type>;
+requires std::is_copy_constructible_v<mapped_type>;
 ```
 
 **Description:** Creates a deep copy of another SlotMap. All keys valid in the source will be valid in the copy.
@@ -768,11 +768,11 @@ requires std::is_copy_constructible_v<value_type>;
 
 **Throws:**
 - `std::bad_alloc` if allocation fails.
-- Any exception from `value_type`'s copy constructor.
+- Any exception from `mapped_type`'s copy constructor.
 
 **Exception Safety:** Strong guarantee. If an exception is thrown, the constructed object is not created.
 
-**Availability:** Only available if `value_type` is copy constructible.
+**Availability:** Only available if `mapped_type` is copy constructible.
 
 **Example:**
 
@@ -803,7 +803,7 @@ assert(original.contains(k1));  // Original unaffected
 
 ```cpp
 SlotMap & operator=(SlotMap const & other)
-requires std::is_copy_constructible_v<value_type>;
+requires std::is_copy_constructible_v<mapped_type>;
 ```
 
 **Description:** Replaces contents with a deep copy of another SlotMap using copy-and-swap idiom.
@@ -815,11 +815,11 @@ requires std::is_copy_constructible_v<value_type>;
 
 **Throws:**
 - `std::bad_alloc` if allocation fails.
-- Any exception from `value_type`'s copy constructor.
+- Any exception from `mapped_type`'s copy constructor.
 
 **Exception Safety:** Strong guarantee. If an exception is thrown, `*this` is unchanged.
 
-**Availability:** Only available if `value_type` is copy constructible.
+**Availability:** Only available if `mapped_type` is copy constructible.
 
 **Example:**
 
@@ -939,13 +939,13 @@ key_type emplace(Args &&... args);
 **Description:** Constructs a new element in-place with the provided arguments. Returns a key for the new element.
 
 **Parameters:**
-- `args` - Arguments to forward to `value_type`'s constructor.
+- `args` - Arguments to forward to `mapped_type`'s constructor.
 
 **Returns:**
 - A valid key referring to the new element, OR
 - `key_type::null()` if capacity is exhausted (no free slots available).
 
-**Throws:** Any exception thrown by `value_type`'s constructor.
+**Throws:** Any exception thrown by `mapped_type`'s constructor.
 
 **Exception Safety:** Strong guarantee. If construction throws, the map is unchanged (no slot is consumed).
 
@@ -1013,7 +1013,7 @@ This is **the** primary way to access elements. It combines lookup and access in
 
 **Parameters:**
 - `key` - The key to look up.
-- `func` - Callable with signature `void(value_type &)` (non-const overload) or `void(value_type const &)` (const overload).
+- `func` - Callable with signature `void(mapped_type &)` (non-const overload) or `void(mapped_type const &)` (const overload).
 
 **Returns:**
 - `true` if the key was valid and `func` was called.
@@ -1159,8 +1159,8 @@ assert(not map.erase(MyKey::null()));
 
 ```cpp
 [[nodiscard]]
-std::optional<value_type> pop(key_type key)
-requires std::is_move_constructible_v<value_type>;
+std::optional<mapped_type> pop(key_type key)
+requires std::is_move_constructible_v<mapped_type>;
 ```
 
 **Description:** Removes an element by key and returns it. If the key is valid, moves the element out, destroys the slot, and returns the moved value wrapped in `std::optional`. If the key is invalid, returns `std::nullopt`.
@@ -1169,12 +1169,12 @@ requires std::is_move_constructible_v<value_type>;
 - `key` - The key of the element to remove.
 
 **Returns:**
-- `std::optional<value_type>` containing the moved element if the key was valid.
+- `std::optional<mapped_type>` containing the moved element if the key was valid.
 - `std::nullopt` if the key was invalid.
 
-**Availability:** Only available if `value_type` is move constructible.
+**Availability:** Only available if `mapped_type` is move constructible.
 
-**Exception Safety:** Strong guarantee if `value_type`'s move constructor is `noexcept`. Otherwise, basic guarantee (slot is erased even if move throws).
+**Exception Safety:** Strong guarantee if `mapped_type`'s move constructor is `noexcept`. Otherwise, basic guarantee (slot is erased even if move throws).
 
 **Example:**
 
@@ -1223,10 +1223,10 @@ size_type for_each(F && func) const;
 
 **Parameters:**
 - `func` - Callable with one of these signatures:
-  - `void(key_type, value_type &, Break &)` - Full access with early exit
-  - `void(key_type, value_type &)` - Key and value
-  - `void(value_type &, Break &)` - Value with early exit
-  - `void(value_type &)` - Value only
+  - `void(key_type, mapped_type &, Break &)` - Full access with early exit
+  - `void(key_type, mapped_type &)` - Key and value
+  - `void(mapped_type &, Break &)` - Value with early exit
+  - `void(mapped_type &)` - Value only
 
 **Returns:** Number of elements visited (may be less than `size()` if early exit occurred).
 
