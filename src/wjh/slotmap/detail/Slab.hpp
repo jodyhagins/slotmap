@@ -9,7 +9,9 @@
 
 #include "Slot.hpp"
 
+#include <cassert>
 #include <cstddef>
+#include <cstring>
 #include <memory>
 #include <new>
 
@@ -20,11 +22,12 @@ namespace wjh::slotmap::detail {
  *
  * Memory layout:
  *   - Slab metadata (dead_count, slots_per_slab)
- *   - Array of Slot<T, IndexT, VersionT> objects
+ *   - Array of Slot objects
+ *   - Alive bitmap (ceil(slots_per_slab / 8) bytes)
  *
  * @tparam T The value type stored in slots
- * @tparam IndexT The index type for free-list linking
- * @tparam VersionT The version type for ABA protection
+ * @tparam IndexT Strong type for indices (e.g., Key::Index)
+ * @tparam VersionT Strong type for versions (e.g., Key::Version)
  * @tparam SizeT The size type for counts
  */
 template <typename T, typename IndexT, typename VersionT, typename SizeT>
@@ -37,37 +40,26 @@ public:
     using size_type = SizeT;
     using slot_type = Slot<T, IndexT, VersionT>;
 
+    static constexpr version_type max_version = version_type::mask;
+
+    [[nodiscard]]
+    static constexpr std::size_t total_bytes_needed(size_type slots_per_slab);
+
     /**
      * Create a new slab with the given number of slots.
+     *
+     * All slots are initialized with version 0 and alive bits cleared.
      *
      * @param slots_per_slab Number of slots in this slab (must be > 0)
      * @return Unique pointer to the newly created slab
      * @throws std::bad_alloc if allocation fails
      */
     [[nodiscard]]
-    static std::unique_ptr<Slab> create(size_type slots_per_slab)
-    {
-        // Calculate total size needed: header + slots array
-        auto const bytes_needed = sizeof(Slab) +
-            slots_per_slab * sizeof(slot_type);
+    static std::unique_ptr<Slab> create(size_type slots_per_slab);
 
-        // Allocate raw memory with proper alignment
-        void * raw = ::operator new (
-            bytes_needed,
-            std::align_val_t{alignof(Slab)});
-
-        // Construct the Slab header
-        auto * slab = ::new (raw) Slab(slots_per_slab);
-
-        // Construct all the slots
-        auto * slots = reinterpret_cast<std::byte *>(slab + 1);
-        for (size_type i = 0; i < slots_per_slab; ++i) {
-            ::new (static_cast<void *>(slots)) slot_type{};
-            slots += sizeof(slot_type);
-        }
-
-        return std::unique_ptr<Slab>(slab);
-    }
+    template <typename ValT>
+    static std::unique_ptr<Slab> create(ValT slots_per_slab)
+    requires requires { size_type(slots_per_slab); };
 
     // Non-copyable, non-movable
     Slab(Slab const &) = delete;
@@ -75,84 +67,111 @@ public:
     Slab(Slab &&) = delete;
     Slab & operator = (Slab &&) = delete;
 
-    ~Slab()
-    {
-        auto * slots = this->slots();
-        // Destroy all slots (note: alive slots should have been destroyed
-        // by SlotMap before this is called)
-        for (size_type i = 0; i < slots_per_slab_; ++i) {
-            slots[i].~slot_type();
-        }
-    }
+    ~Slab();
 
-    // ========================================================================
-    // Prevent direct allocation - use create() instead
-    // ========================================================================
-
-    // Only operator delete is public (needed by unique_ptr destructor)
-    static void operator delete (void * ptr)
-    {
-        ::operator delete (ptr, std::align_val_t{alignof(Slab)});
-    }
-
+    static void operator delete (void * ptr);
     static void operator delete[] (void *) = delete;
 
     // ========================================================================
-    // Slot access
+    // Slot lifecycle management
+    // ========================================================================
+
+    /**
+     * Emplace a value into a slot.
+     *
+     * @param index Slot index within this slab
+     * @param args Arguments to forward to T's constructor
+     * @return The version for this insertion (to be used in the key)
+     *
+     * @pre Slot must not be alive (is_alive(index) == false)
+     * @post Slot is alive (is_alive(index) == true)
+     */
+    template <typename... Args>
+    version_type emplace(index_type index, Args &&... args);
+
+    /**
+     * Destroy the value in a slot.
+     *
+     * Destroys the value, clears the alive bit, and increments the version.
+     * If the version was already at max (all bits 1), the slot becomes dead
+     * and is not suitable for reuse.
+     *
+     * @param index Slot index within this slab
+     * @return true if slot can be reused (added to free list),
+     *         false if slot is dead (version exhausted)
+     *
+     * @pre Slot must be alive (is_alive(index) == true)
+     * @post Slot is not alive (is_alive(index) == false)
+     */
+    bool destroy(index_type index);
+
+    /**
+     * Check if a slot is alive (has a constructed value).
+     */
+    [[nodiscard]]
+    bool is_alive(index_type index) const noexcept;
+
+    // ========================================================================
+    // Slot access (for free-list management by SlotMap)
     // ========================================================================
 
     [[nodiscard]]
-    slot_type & slot(size_type index) noexcept
-    {
-        return slots()[index];
-    }
+    slot_type & slot(index_type index) noexcept;
 
     [[nodiscard]]
-    slot_type const & slot(size_type index) const noexcept
-    {
-        return slots()[index];
-    }
+    slot_type const & slot(index_type index) const noexcept;
 
     [[nodiscard]]
-    size_type slots_per_slab() const noexcept
-    {
-        return slots_per_slab_;
-    }
+    size_type slots_per_slab() const noexcept;
 
     // ========================================================================
     // Dead count tracking
     // ========================================================================
 
     [[nodiscard]]
-    size_type dead_count() const noexcept
-    {
-        return dead_count_;
-    }
+    size_type dead_count() const noexcept;
 
-    void increment_dead_count() noexcept { ++dead_count_; }
+    [[nodiscard]]
+    bool can_be_recycled() const noexcept;
 
-    void reset_dead_count() noexcept { dead_count_ = 0; }
+    /**
+     * Recycle the slab so it can be reused.
+     *
+     * @param first_index  The true index of the first slot in this slab.
+     *
+     * @param last_next  The next value for the last slot in this slab.
+     *
+     * @pre can_be_recycled()
+     */
+    void recycle(index_type first_index, index_type last_next);
 
 private:
-    explicit Slab(size_type slots_per_slab) noexcept
-    : dead_count_{0}
-    , slots_per_slab_{slots_per_slab}
-    { }
+    using naked_index_type = typename index_type::value_type;
+    using naked_size_type = typename size_type::value_type;
 
-    slot_type * slots()
-    {
-        return std::launder(reinterpret_cast<slot_type *>(this + 1));
-    }
+    explicit Slab(size_type slots_per_slab) noexcept;
 
-    slot_type const * slots() const
-    {
-        return std::launder(reinterpret_cast<slot_type const *>(this + 1));
-    }
+    /**
+     * Calculate the number of bytes needed for the alive bitmap.
+     */
+    static constexpr std::size_t bitmap_size(size_type slots_per_slab) noexcept;
 
-    size_type dead_count_;
-    size_type slots_per_slab_;
+    slot_type * slots() noexcept;
+    slot_type const * slots() const noexcept;
+
+    std::byte * bitmap() noexcept;
+    std::byte const * bitmap() const noexcept;
+
+    void set_alive(index_type index, bool alive) noexcept;
+    [[maybe_unused]]
+    bool are_all_dead() const;
+
+    naked_size_type dead_count_;
+    naked_size_type slots_per_slab_;
 };
 
 } // namespace wjh::slotmap::detail
+
+#include "Slab.ipp"
 
 #endif // WJH_SLOTMAP_0843744742F143B5826D3DA7D551B2EC

@@ -16,8 +16,43 @@
 #include "testing/rapidcheck.hpp"
 
 namespace {
-using namespace wjh::slotmap::detail;
-namespace dtl = wjh::slotmap::detail;
+// using namespace wjh::slotmap::detail;
+// namespace dtl = wjh::slotmap::detail;
+
+struct dtl
+{
+    template <typename T, int adj>
+    struct Type
+    {
+        static constexpr unsigned num_bits = std::numeric_limits<T>::digits -
+            adj;
+        using value_type = T;
+        static constexpr value_type mask = [] {
+            if constexpr (num_bits >= std::numeric_limits<value_type>::digits) {
+                return value_type(~value_type{0});
+            } else {
+                return value_type((value_type{1} << num_bits) - 1);
+            }
+        };
+        value_type value;
+
+        constexpr Type(value_type v)
+        : value(v)
+        { }
+
+        constexpr operator value_type () const { return value; }
+    };
+
+    template <typename T, typename IndexT, typename VersionT, int adj = 1>
+    using Slot =
+        wjh::slotmap::detail::Slot<T, Type<IndexT, adj>, Type<VersionT, adj>>;
+};
+
+template <typename T, typename IndexT, typename VersionT>
+using Slot = dtl::Slot<T, IndexT, VersionT, 1>;
+
+template <typename T, typename IndexT, typename VersionT>
+using FullSlot = dtl::Slot<T, IndexT, VersionT, 0>;
 
 // ============================================================================
 // Basic Slot Tests
@@ -68,7 +103,7 @@ TEST_CASE("Slot: basic types and construction")
 
 TEST_CASE("Slot: version access")
 {
-    Slot<int, std::uint32_t, std::uint32_t> slot;
+    FullSlot<int, std::uint32_t, std::uint32_t> slot{};
 
     SUBCASE("set and get version") {
         slot.set_version(42);
@@ -90,7 +125,7 @@ TEST_CASE("Slot: version access")
 
 TEST_CASE("Slot: free-list access")
 {
-    Slot<int, std::uint32_t, std::uint32_t> slot;
+    Slot<int, std::uint32_t, std::uint32_t> slot{};
 
     SUBCASE("set and get next") {
         slot.set_next(12345);
@@ -106,7 +141,7 @@ TEST_CASE("Slot: free-list access")
 TEST_CASE("Slot: emplace and value access")
 {
     SUBCASE("emplace trivial type") {
-        Slot<int, std::uint32_t, std::uint32_t> slot;
+        Slot<int, std::uint32_t, std::uint32_t> slot{};
 
         auto & ref = slot.emplace(42);
         REQUIRE(ref == 42);
@@ -116,7 +151,7 @@ TEST_CASE("Slot: emplace and value access")
     }
 
     SUBCASE("emplace non-trivial type") {
-        Slot<std::string, std::uint32_t, std::uint32_t> slot;
+        Slot<std::string, std::uint32_t, std::uint32_t> slot{};
 
         std::string expected;
         for (int i = 0; i < 1000; ++i) {
@@ -131,7 +166,7 @@ TEST_CASE("Slot: emplace and value access")
     }
 
     SUBCASE("emplace with multiple arguments") {
-        Slot<std::string, std::uint32_t, std::uint32_t> slot;
+        Slot<std::string, std::uint32_t, std::uint32_t> slot{};
 
         auto & ref = slot.emplace(std::size_t{5}, 'x');
         REQUIRE(ref == "xxxxx");
@@ -141,7 +176,7 @@ TEST_CASE("Slot: emplace and value access")
     }
 
     SUBCASE("value is modifiable") {
-        Slot<int, std::uint32_t, std::uint32_t> slot;
+        Slot<int, std::uint32_t, std::uint32_t> slot{};
 
         slot.emplace(10);
         slot.value() = 20;
@@ -151,7 +186,7 @@ TEST_CASE("Slot: emplace and value access")
     }
 
     SUBCASE("const value access") {
-        Slot<int, std::uint32_t, std::uint32_t> slot;
+        Slot<int, std::uint32_t, std::uint32_t> slot{};
         slot.emplace(42);
 
         auto const & const_slot = slot;
@@ -173,7 +208,7 @@ TEST_CASE("Slot: destroy")
 
         destructor_count = 0;
         {
-            Slot<Tracker, std::uint32_t, std::uint32_t> slot;
+            Slot<Tracker, std::uint32_t, std::uint32_t> slot{};
             slot.emplace();
             REQUIRE(destructor_count == 0);
             slot.destroy();
@@ -182,7 +217,7 @@ TEST_CASE("Slot: destroy")
     }
 
     SUBCASE("destroy is noexcept for nothrow destructible types") {
-        Slot<int, std::uint32_t, std::uint32_t> slot;
+        Slot<int, std::uint32_t, std::uint32_t> slot{};
         slot.emplace(42);
 
         static_assert(noexcept(slot.destroy()));
@@ -193,7 +228,7 @@ TEST_CASE("Slot: destroy")
 
 TEST_CASE("Slot: lifecycle - free to alive to free")
 {
-    Slot<std::string, std::uint32_t, std::uint32_t> slot;
+    Slot<std::string, std::uint32_t, std::uint32_t> slot{};
 
     // Initially free
     slot.set_version(0);
@@ -217,7 +252,7 @@ TEST_CASE("Slot: lifecycle - free to alive to free")
 
 TEST_CASE("Slot: version survives emplace/destroy cycle")
 {
-    Slot<int, std::uint32_t, std::uint32_t> slot;
+    Slot<int, std::uint32_t, std::uint32_t> slot{};
 
     // Set version before emplace
     slot.set_version(42);
@@ -235,12 +270,23 @@ TEST_CASE("Slot: version survives emplace/destroy cycle")
 // ============================================================================
 // Property-Based Tests
 // ============================================================================
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wexit-time-destructors"
+#pragma clang diagnostic ignored "-Wglobal-constructors"
+template <std::unsigned_integral IntT>
+auto const gen_uint_no_high_bit =
+    rc::gen::suchThat(rc::gen::arbitrary<IntT>(), [](IntT x) {
+        static constexpr IntT hibit = IntT(
+            IntT(1) << (std::numeric_limits<IntT>::digits - 1));
+        return not (x & hibit);
+    });
+#pragma clang diagnostic pop
 
 TEST_CASE("Slot: property-based version round-trip")
 {
     rc::check("version round-trips correctly", []() {
-        auto const version = *rc::gen::arbitrary<std::uint32_t>();
-        Slot<int, std::uint32_t, std::uint32_t> slot;
+        auto const version = *gen_uint_no_high_bit<std::uint32_t>;
+        Slot<int, std::uint32_t, std::uint32_t> slot{};
         slot.set_version(version);
         RC_ASSERT(slot.version() == version);
     });
@@ -249,8 +295,8 @@ TEST_CASE("Slot: property-based version round-trip")
 TEST_CASE("Slot: property-based next round-trip")
 {
     rc::check("next round-trips correctly", []() {
-        auto const next = *rc::gen::arbitrary<std::uint32_t>();
-        Slot<int, std::uint32_t, std::uint32_t> slot;
+        auto const next = *gen_uint_no_high_bit<std::uint32_t>;
+        Slot<int, std::uint32_t, std::uint32_t> slot{};
         slot.set_next(next);
         RC_ASSERT(slot.next() == next);
     });
@@ -259,9 +305,9 @@ TEST_CASE("Slot: property-based next round-trip")
 TEST_CASE("Slot: property-based version and next independence")
 {
     rc::check("version and next are independent", []() {
-        auto const version = *rc::gen::arbitrary<std::uint32_t>();
-        auto const next = *rc::gen::arbitrary<std::uint32_t>();
-        Slot<int, std::uint32_t, std::uint32_t> slot;
+        auto const version = *gen_uint_no_high_bit<std::uint32_t>;
+        auto const next = *gen_uint_no_high_bit<std::uint32_t>;
+        Slot<int, std::uint32_t, std::uint32_t> slot{};
 
         slot.set_version(version);
         slot.set_next(next);
@@ -282,7 +328,7 @@ TEST_CASE("Slot: property-based emplace value round-trip")
 {
     rc::check("emplace value round-trips correctly", []() {
         auto const value = *rc::gen::arbitrary<int>();
-        Slot<int, std::uint32_t, std::uint32_t> slot;
+        Slot<int, std::uint32_t, std::uint32_t> slot{};
 
         slot.emplace(value);
         RC_ASSERT(slot.value() == value);
@@ -295,7 +341,7 @@ TEST_CASE("Slot: property-based string emplace")
 {
     rc::check("string emplace round-trips correctly", []() {
         auto const value = *rc::gen::arbitrary<std::string>();
-        Slot<std::string, std::uint32_t, std::uint32_t> slot;
+        Slot<std::string, std::uint32_t, std::uint32_t> slot{};
 
         slot.emplace(value);
         RC_ASSERT(slot.value() == value);
@@ -336,7 +382,7 @@ TEST_CASE("Slot: type traits")
 TEST_CASE("Slot: edge cases with different index/version types")
 {
     SUBCASE("8-bit index and version") {
-        Slot<int, std::uint8_t, std::uint8_t> slot;
+        FullSlot<int, std::uint8_t, std::uint8_t> slot{};
 
         slot.set_version(255);
         slot.set_next(255);
@@ -346,7 +392,7 @@ TEST_CASE("Slot: edge cases with different index/version types")
     }
 
     SUBCASE("16-bit index and version") {
-        Slot<int, std::uint16_t, std::uint16_t> slot;
+        FullSlot<int, std::uint16_t, std::uint16_t> slot{};
 
         slot.set_version(65535);
         slot.set_next(65535);
@@ -356,7 +402,7 @@ TEST_CASE("Slot: edge cases with different index/version types")
     }
 
     SUBCASE("64-bit index and version") {
-        Slot<int, std::uint64_t, std::uint64_t> slot;
+        FullSlot<int, std::uint64_t, std::uint64_t> slot{};
 
         slot.set_version(std::numeric_limits<std::uint64_t>::max());
         slot.set_next(std::numeric_limits<std::uint64_t>::max());
@@ -383,7 +429,7 @@ TEST_CASE("Slot: value type larger than index type")
         }
     };
 
-    Slot<LargeValue, std::uint16_t, std::uint16_t> slot;
+    Slot<LargeValue, std::uint16_t, std::uint16_t> slot{};
 
     LargeValue val{};
     for (int i = 0; i < 16; ++i) {
@@ -398,7 +444,7 @@ TEST_CASE("Slot: value type larger than index type")
 
 TEST_CASE("Slot: value type smaller than index type")
 {
-    Slot<char, std::uint64_t, std::uint64_t> slot;
+    Slot<char, std::uint64_t, std::uint64_t> slot{};
 
     slot.emplace('X');
     REQUIRE(slot.value() == 'X');

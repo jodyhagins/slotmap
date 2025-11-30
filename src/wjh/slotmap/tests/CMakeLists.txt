@@ -8,6 +8,7 @@ add_executable(slotmap_ut main.cpp
         Key_ut.cpp
         Slot_ut.cpp
         Slab_ut.cpp
+        SlotMap_ut.cpp
 )
 target_link_libraries(slotmap_ut
         PRIVATE

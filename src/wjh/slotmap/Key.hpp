@@ -9,6 +9,7 @@
 
 #include "detail.hpp"
 
+#include <cassert>
 #include <compare>
 #include <cstddef>
 #include <functional>
@@ -27,8 +28,7 @@ namespace wjh::slotmap {
  * @tparam UserBits  Number of bits allocated for user-defined data. If 0, there
  * are no user controlled bits.
  *
- * @tparam T  Phantom type for type safety (not stored, only for type
- * distinction)
+ * @tparam T  Phantom type for type safety, and triviality distinction.
  *
  * The sum of IndexBits + VersionBits + UserBits must equal 32, 64, or 128.
  * 128-bit keys are only supported on platforms with __uint128_t.
@@ -40,128 +40,190 @@ template <
     unsigned VersionBits,
     unsigned UserBits,
     typename T = void>
-requires(
-    IndexBits > 0 && VersionBits > 0 &&
-    requires {
-        typename detail::storage_type_t<IndexBits + VersionBits + UserBits>;
-    })
 class Key
 : private detail::
       KeyBase<detail::storage_type_t<IndexBits + VersionBits + UserBits>, T>
 {
+    static_assert(IndexBits > 0);
+    static_assert(VersionBits > 0);
     static constexpr unsigned num_bits = IndexBits + VersionBits + UserBits;
     using Base = detail::KeyBase<detail::storage_type_t<num_bits>, T>;
-
-public:
-    using value_type = typename Base::value_type;
-    using tag_type = typename Base::tag_type;
+    template <unsigned N, typename DerivedT>
+    using TypeBase = detail::TypeBase<N, DerivedT>;
 
     struct Index
+    : TypeBase<IndexBits, Index>
     {
-        static constexpr unsigned num_bits = IndexBits;
-        using value_type = detail::type_with_at_least_t<num_bits>;
-        value_type value;
-
-        constexpr operator value_type () const { return value; }
+        using TypeBase<IndexBits, Index>::TypeBase;
     };
+
+    using naked_index_type = typename Index::value_type;
+
+    struct Size
+    : TypeBase<IndexBits + 1, Size>
+    {
+        using TypeBase<IndexBits + 1, Size>::TypeBase;
+
+        constexpr Size(Index index)
+        : Size(index.value)
+        { }
+
+        friend constexpr auto operator <=> (Size x, Size y) = default;
+        friend constexpr bool operator == (Size x, Size y) = default;
+    };
+
+    using naked_size_type = typename Size::value_type;
 
     struct Version
+    : TypeBase<VersionBits, Version>
     {
-        static constexpr unsigned num_bits = VersionBits;
-        using value_type = detail::type_with_at_least_t<num_bits>;
-        value_type value;
-
-        constexpr operator value_type () const { return value; }
+        using TypeBase<VersionBits, Version>::TypeBase;
     };
 
-    struct User
-    {
-        static constexpr unsigned num_bits = UserBits;
-        using value_type = detail::type_with_at_least_t<num_bits>;
-        value_type value;
+    using naked_version_type = typename Version::value_type;
 
-        constexpr operator value_type () const { return value; }
+    class User
+    : public TypeBase<UserBits, User>
+    {
+        using Base = TypeBase<UserBits, User>;
+
+    public:
+        using value_type = typename TypeBase<UserBits, User>::value_type;
+        using Base::Base;
+
+        constexpr User(std::unsigned_integral auto v)
+        : Base(value_type(v))
+        { }
     };
 
+    using naked_user_type = typename User::value_type;
+
+public:
+    // ========================================================================
+    // Member types
+    // ========================================================================
+    using value_type = typename Base::value_type;
+    using tag_type = typename Base::tag_type;
+    using index_type = Index;
+    using size_type = Size;
+    using version_type = Version;
+    using user_type = User;
+
+    // ========================================================================
+    // Special member functions
+    // ========================================================================
+
+    /**
+     * The base class defines default constructors.
+     *
+     * If @p T, the type passed in, is wrapped with detail::Trivial, then this
+     * type will be trivially default constructible, and the internal bits will
+     * be uninitialized. Otherwise, the internal bits will be initialized to 0.
+     */
     using Base::Base;
 
-    constexpr Key(Index index, Version version, User user = {0}) noexcept
-    : Base(static_cast<value_type>(
-        (index.value & index_mask) |
-        safe_shift_left(version.value & version_mask, version_shift) |
-        safe_shift_left(user.value & user_mask, user_shift)))
-    { }
+    /**
+     * Construct a Key with its components.
+     */
+    explicit constexpr Key(
+        index_type index,
+        version_type version,
+        user_type user) noexcept;
+
+    /**
+     * Construct a Key with its components, sans user_type, which will be 0.
+     */
+    explicit constexpr Key(index_type index, version_type version) noexcept;
+
+    // ========================================================================
+    // Static member functions
+    // ========================================================================
+
+    /**
+     * Create a null key (all bits zero)
+     */
+    [[nodiscard]]
+    static constexpr Key null() noexcept;
+
+    // ========================================================================
+    // Data access
+    // ========================================================================
 
     [[nodiscard]]
-    constexpr Index index() const noexcept
+    constexpr index_type index() const noexcept;
+
+    [[nodiscard]]
+    constexpr version_type version() const noexcept;
+
+    [[nodiscard]]
+    constexpr user_type user() const noexcept;
+
+    /**
+     * Get the underlying raw bits of the key.
+     *
+     * @note  The returned type is a naked unsigned integral type.
+     */
+    [[nodiscard]]
+    constexpr value_type to_underlying() const noexcept;
+
+    // ========================================================================
+    // Operations
+    // ========================================================================
+
+    /**
+     * Create a new key with modified user bits
+     */
+    [[nodiscard]]
+    constexpr Key with_user(user_type new_user) const noexcept;
+
+    /**
+     * Check if the key is equal to the null_key.
+     */
+    [[nodiscard]]
+    constexpr bool is_null() const noexcept;
+
+    /**
+     * Return a hash of the key.
+     *
+     * @note  This hash function is constexpr, and since std::hash is not, the
+     * returned has is NOT guaranteed to yield the same as
+     * std::hash<value_type>{}().
+     */
+    [[nodiscard]]
+    constexpr std::size_t hash() const noexcept;
+
+    // ========================================================================
+    // Hidden friends
+    // ========================================================================
+
+    /**
+     * Get the underlying raw bits of the key.
+     *
+     * @note  The returned type is a naked unsigned integral type.
+     */
+    [[nodiscard]]
+    friend constexpr value_type to_underlying(Key const & key) noexcept
     {
-        return Index{static_cast<Index::value_type>(Base::bits_ & index_mask)};
+        return key.to_underlying();
     }
 
     [[nodiscard]]
-    constexpr Version version() const noexcept
+    friend constexpr bool
+    operator == (Key const & x, Key const & y) noexcept
     {
-        return Version{static_cast<Version::value_type>(
-            safe_shift_right(Base::bits_, version_shift) & version_mask)};
+        return x.Base::bits_ == y.Base::bits_;
     }
 
     [[nodiscard]]
-    constexpr User user() const noexcept
+    friend constexpr auto
+    operator <=> (Key const & x, Key const & y) noexcept
     {
-        return User{static_cast<User::value_type>(
-            safe_shift_right(Base::bits_, user_shift) & user_mask)};
-    }
-
-    // Create a new key with modified user bits
-    [[nodiscard]]
-    constexpr Key with_user(User new_user) const noexcept
-    {
-        // Clear existing user bits and set new ones
-        auto const cleared = Base::bits_ &
-            ~safe_shift_left(user_mask, user_shift);
-        auto const updated = cleared |
-            safe_shift_left(new_user.value & user_mask, user_shift);
-
-        Key result;
-        result.Base::bits_ = updated;
-        return result;
-    }
-
-    [[nodiscard]]
-    constexpr value_type to_underlying() const noexcept
-    {
-        return Base::bits_;
-    }
-
-    // Create a null key (all bits zero)
-    [[nodiscard]]
-    static constexpr Key null() noexcept
-    {
-        return Key{};
-    }
-
-    [[nodiscard]]
-    constexpr bool is_null() const noexcept
-    {
-        return Base::bits_ == value_type{0};
-    }
-
-    [[nodiscard]]
-    constexpr std::size_t hash() const noexcept
-    {
-        return detail::hash_bits(Base::bits_);
+        return x.Base::bits_ <=> y.Base::bits_;
     }
 
 private:
     template <unsigned Bits>
-    static constexpr value_type make_mask() noexcept
-    {
-        if constexpr (Bits == 0) {
-            return value_type{0};
-        } else {
-            return (value_type{1} << Bits) - value_type{1};
-        }
-    }
+    static constexpr value_type make_mask() noexcept;
 
     // Bit masks for each field
     static constexpr value_type index_mask = make_mask<IndexBits>();
@@ -172,46 +234,35 @@ private:
     static constexpr unsigned version_shift = IndexBits;
     static constexpr unsigned user_shift = IndexBits + VersionBits;
 
+
     // Helper to shift left safely (handles 0-bit or full-width shifts)
     static constexpr value_type safe_shift_left(
         value_type val,
-        unsigned shift) noexcept
-    {
-        if (shift >= num_bits) {
-            return value_type{0};
-        }
-        return val << shift;
-    }
+        unsigned shift) noexcept;
 
     // Helper to shift right safely (handles 0-bit or full-width shifts)
     static constexpr value_type safe_shift_right(
         value_type val,
-        unsigned shift) noexcept
-    {
-        if (shift >= num_bits) {
-            return value_type{0};
-        }
-        return val >> shift;
-    }
-
-    // Equality comparison (defaulted)
-    [[nodiscard]]
-    friend constexpr bool
-    operator == (Key const & x, Key const & y) noexcept
-    {
-        return x.Base::bits_ == y.Base::bits_;
-    }
-
-    // Three-way comparison (defaulted)
-    // This compares the entire bit pattern, giving lexicographic ordering
-    [[nodiscard]]
-    friend constexpr auto
-    operator <=> (Key const & x, Key const & y) noexcept
-    {
-        return x.Base::bits_ <=> y.Base::bits_;
-    }
+        unsigned shift) noexcept;
 };
 
+template <typename T>
+struct is_key
+: std::false_type
+{ };
+
+template <unsigned I, unsigned V, unsigned U, typename T>
+struct is_key<Key<I, V, U, T>>
+: std::true_type
+{ };
+
+template <typename T>
+inline constexpr bool is_key_v = is_key<T>::value;
+
+/**
+ * The same as Key<IndexBits, VersionBits, UserBits, T>, except the Key class
+ * will be trivially default constructible.
+ */
 template <
     unsigned IndexBits,
     unsigned VersionBits,
@@ -244,20 +295,20 @@ using TrivialSlotMapKey =
 /**
  * Specialization of std::hash for wjh::slotmap::Key.
  */
-template <
-    unsigned IndexBits,
-    unsigned VersionBits,
-    unsigned UserBits,
-    typename T>
-struct std::hash<wjh::slotmap::Key<IndexBits, VersionBits, UserBits, T>>
+template <unsigned I, unsigned V, unsigned U, typename T>
+struct std::hash<wjh::slotmap::Key<I, V, U, T>>
 {
+    /**
+     * Return a hash of the key.
+     *
+     * @note  This hash function returns the same as key.hash(), which is NOT
+     * guaranteed to yield the same as std::hash<value_type>{}().
+     */
     [[nodiscard]]
     std::size_t
-    operator () (wjh::slotmap::Key<IndexBits, VersionBits, UserBits, T> const &
-                     key) const noexcept
-    {
-        return key.hash();
-    }
+    operator () (wjh::slotmap::Key<I, V, U, T> const & key) const noexcept;
 };
+
+#include "Key.ipp"
 
 #endif // WJH_SLOTMAP_073D1EC2FEF04177914D3CC646306810

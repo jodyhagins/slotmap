@@ -7,8 +7,10 @@
 #ifndef WJH_SLOTMAP_CA3F4DEEB84042E584DF898CE8D8E93A
 #define WJH_SLOTMAP_CA3F4DEEB84042E584DF898CE8D8E93A
 
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 
 namespace wjh::slotmap::detail {
@@ -117,6 +119,64 @@ protected:
     explicit constexpr KeyBase(value_type b)
     : bits_(b)
     { }
+};
+
+template <unsigned N, typename DerivedT>
+struct TypeBase
+{
+    static constexpr unsigned num_bits = N;
+    using value_type = detail::type_with_at_least_t<num_bits>;
+    static constexpr value_type mask = [] {
+        if constexpr (num_bits >= std::numeric_limits<value_type>::digits) {
+            return value_type(~value_type{0});
+        } else {
+            return value_type((value_type{1} << num_bits) - 1);
+        }
+    }();
+    value_type value;
+
+    constexpr TypeBase() = default;
+
+    template <typename ValT>
+    constexpr explicit TypeBase(ValT val)
+    requires requires { value_type{val}; }
+    : value{val}
+    {
+        assert((val | mask) == mask);
+    }
+
+    constexpr operator value_type () const { return value; }
+
+    friend constexpr auto operator <=> (TypeBase x, TypeBase y) = default;
+
+    template <typename ValT>
+    requires(std::is_unsigned_v<ValT> && sizeof(ValT) <= sizeof(value_type))
+    friend constexpr auto operator <=> (TypeBase x, ValT y)
+    {
+        return x.value <=> y;
+    }
+
+    friend constexpr bool operator == (TypeBase x, TypeBase y) = default;
+
+    template <typename ValT>
+    requires(std::is_unsigned_v<ValT> && sizeof(ValT) <= sizeof(value_type))
+    friend constexpr bool operator == (TypeBase x, ValT y)
+    {
+        return x.value == y;
+    }
+
+    DerivedT & operator ++ ()
+    {
+        ++value;
+        return static_cast<DerivedT &>(*this);
+    }
+
+    DerivedT operator ++ (int)
+    {
+        auto result = value;
+        ++value;
+        return DerivedT(result);
+    }
 };
 
 // Constexpr hash function based on splitmix64
