@@ -422,16 +422,16 @@ contains(key_type key) const
 namespace detail {
 template <typename F, typename KeyT, typename ValT>
 void
-invoke_for_each(F && func, KeyT key, ValT & val, [[maybe_unused]] Break & brk)
+invoke_for_each(F & func, KeyT key, ValT & val, [[maybe_unused]] Break & brk)
 {
     if constexpr (std::is_invocable_v<F, KeyT, ValT &, Break &>) {
-        std::invoke(std::forward<F>(func), key, val, brk);
+        std::invoke(func, key, val, brk);
     } else if constexpr (std::is_invocable_v<F, KeyT, ValT &>) {
-        std::invoke(std::forward<F>(func), key, val);
+        std::invoke(func, key, val);
     } else if constexpr (std::is_invocable_v<F, ValT &, Break &>) {
-        std::invoke(std::forward<F>(func), val, brk);
+        std::invoke(func, val, brk);
     } else {
-        std::invoke(std::forward<F>(func), val);
+        std::invoke(func, val);
     }
 }
 } // namespace detail
@@ -442,14 +442,10 @@ SlotMap<KeyT>::size_type
 SlotMap<KeyT>::
 for_each(F && func)
 {
-    return const_cast<SlotMap const &>(*this).for_each(
-        [&func](key_type key, value_type const & v, Break & brk) {
-            detail::invoke_for_each(
-                std::forward<F>(func),
-                key,
-                const_cast<value_type &>(v),
-                brk);
-        });
+    auto f = [&func](key_type key, value_type const & v, Break & brk) {
+        detail::invoke_for_each(func, key, const_cast<value_type &>(v), brk);
+    };
+    return const_cast<SlotMap const &>(*this).for_each(f);
 }
 
 template <typename KeyT>
@@ -489,7 +485,7 @@ for_each(F && func) const
                 auto const key = key_type(full_idx, ver, user_type{});
 
                 detail::invoke_for_each(
-                    std::forward<F>(func),
+                    func,
                     key,
                     slab->slot(idx).value(),
                     brk);
