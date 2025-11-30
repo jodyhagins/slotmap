@@ -316,6 +316,8 @@ erase(key_type key)
 {
     auto const key_idx = key.index();
     if (auto * slab = get_slab(key_idx)) {
+        auto const slab_idx = static_cast<std::size_t>(
+            key_idx >> log2_slots_per_slab_);
         auto const slot_idx = index_type(
             naked_index_type(key_idx.value & (slots_per_slab_ - 1)));
         if (auto & slot = slab->slot(slot_idx);
@@ -328,13 +330,51 @@ erase(key_type key)
                 // Add to free list
                 slot.set_next(free_list_head_);
                 free_list_head_ = size_type(key_idx);
+            } else {
+                // Slot is dead - check if slab can be recycled
+                try_recycle_slab(slab_idx);
             }
-            // TODO: Phase 6 - slab recycling when can_reuse is false
 
             return true;
         }
     }
     return false;
+}
+
+template <typename KeyT>
+std::optional<typename SlotMap<KeyT>::value_type>
+SlotMap<KeyT>::
+pop(key_type key)
+requires std::is_move_constructible_v<value_type>
+{
+    auto const key_idx = key.index();
+    if (auto * slab = get_slab(key_idx)) {
+        auto const slab_idx = static_cast<std::size_t>(
+            key_idx >> log2_slots_per_slab_);
+        auto const slot_idx = index_type(
+            naked_index_type(key_idx.value & (slots_per_slab_ - 1)));
+        if (auto & slot = slab->slot(slot_idx);
+            slot.version() == key.version() && slab->is_alive(slot_idx))
+        {
+            // Move the value out before destroying
+            auto result = std::make_optional(std::move(slot.value()));
+
+            // Destroy the value - returns true if slot can be reused
+            bool const can_reuse = slab->destroy(slot_idx);
+            --size_;
+            if (can_reuse) {
+                // Add to free list
+                slot.set_next(free_list_head_);
+                free_list_head_ = size_type(key_idx);
+            } else {
+                // Slot is dead - check if slab can be recycled
+                try_recycle_slab(slab_idx);
+            }
+
+            return result;
+        }
+    }
+    return std::nullopt;
 }
 
 template <typename KeyT>
@@ -532,6 +572,64 @@ SlotMap<KeyT>::
 reset()
 {
     clear_slabs();
+}
+
+template <typename KeyT>
+void
+SlotMap<KeyT>::
+reserve(size_type n)
+{
+    // Calculate how many total slots we need
+    // Already have: next_slab_base_index_ slots allocated (across all slabs)
+    // Plus free slots in partially filled slabs
+    while (size_type(next_slab_base_index_) < n) {
+        if (not allocate_new_slab()) {
+            // Index space exhausted - can't allocate more
+            break;
+        }
+    }
+}
+
+template <typename KeyT>
+void
+SlotMap<KeyT>::
+try_recycle_slab(std::size_t slab_idx)
+{
+    auto * slab = slabs_[slab_idx].get();
+    if (not slab || not slab->can_be_recycled()) {
+        return;
+    }
+
+    // Check if there's room for more slabs in the index space
+    auto const new_base = next_slab_base_index_;
+    if (size_type(new_base) + size_type(slots_per_slab_) > end_of_free_list) {
+        // No room for recycling - just delete the slab
+        slabs_[slab_idx].reset();
+        return;
+    }
+
+    // Calculate where the recycled slab will go
+    auto const new_slab_idx = static_cast<std::size_t>(
+        new_base >> log2_slots_per_slab_);
+
+    // Ensure vector is large enough
+    if (new_slab_idx >= slabs_.size()) {
+        slabs_.resize(new_slab_idx + 1);
+    }
+
+    // Recycle the slab to the new position
+    auto const first_index = index_type(
+        static_cast<naked_index_type>(new_base));
+    slab->recycle(first_index, free_list_head_);
+
+    // Move slab pointer to new position
+    if (new_slab_idx != slab_idx) {
+        slabs_[new_slab_idx] = std::move(slabs_[slab_idx]);
+    }
+
+    // Update bookkeeping
+    free_list_head_ = size_type(new_base);
+    next_slab_base_index_ += slots_per_slab_;
 }
 
 } // namespace wjh::slotmap

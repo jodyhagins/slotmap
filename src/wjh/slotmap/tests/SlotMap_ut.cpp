@@ -564,6 +564,248 @@ TEST_CASE("SlotMap: copy assignment")
 }
 
 // ============================================================================
+// Pop Tests
+// ============================================================================
+
+TEST_CASE("SlotMap: pop")
+{
+    SUBCASE("pop returns value and removes element") {
+        SlotMap<Key<16, 16, 0, int>> map;
+        auto key = map.emplace(42);
+
+        auto result = map.pop(key);
+
+        CHECK(result.has_value());
+        CHECK(result.value() == 42);
+        CHECK(map.is_empty());
+        CHECK(not map.contains(key));
+    }
+
+    SUBCASE("pop returns nullopt for invalid key") {
+        SlotMap<Key<16, 16, 0, int>> map;
+        auto key = map.emplace(42);
+        map.erase(key);
+
+        auto result = map.pop(key);
+
+        CHECK(not result.has_value());
+    }
+
+    SUBCASE("pop returns nullopt for null key") {
+        SlotMap<Key<16, 16, 0, int>> map;
+        map.emplace(42);
+
+        auto result = map.pop(Key<16, 16, 0, int>::null());
+
+        CHECK(not result.has_value());
+    }
+
+    SUBCASE("pop moves value out") {
+        SlotMap<Key<16, 16, 0, std::string>> map;
+        auto key = map.emplace("hello world");
+
+        auto result = map.pop(key);
+
+        CHECK(result.has_value());
+        CHECK(result.value() == "hello world");
+        CHECK(not map.contains(key));
+    }
+
+    SUBCASE("pop with move-only type") {
+        SlotMap<Key<16, 16, 0, std::unique_ptr<int>>> map;
+        auto key = map.emplace(std::make_unique<int>(42));
+
+        auto result = map.pop(key);
+
+        CHECK(result.has_value());
+        CHECK(*result.value() == 42);
+        CHECK(not map.contains(key));
+    }
+
+    SUBCASE("pop multiple elements") {
+        SlotMap<Key<16, 16, 0, int>> map;
+        auto key1 = map.emplace(1);
+        auto key2 = map.emplace(2);
+        auto key3 = map.emplace(3);
+
+        CHECK(map.size().value == 3);
+
+        auto r1 = map.pop(key1);
+        CHECK(r1.value() == 1);
+        CHECK(map.size().value == 2);
+
+        auto r2 = map.pop(key2);
+        CHECK(r2.value() == 2);
+        CHECK(map.size().value == 1);
+
+        auto r3 = map.pop(key3);
+        CHECK(r3.value() == 3);
+        CHECK(map.is_empty());
+    }
+}
+
+// ============================================================================
+// Reserve Tests
+// ============================================================================
+
+TEST_CASE("SlotMap: reserve")
+{
+    using TestMap = SlotMap<Key<16, 16, 0, int>>;
+
+    SUBCASE("reserve does not change size") {
+        TestMap map;
+
+        map.reserve(TestMap::size_type(100u));
+
+        CHECK(map.is_empty());
+    }
+
+    SUBCASE("reserve allows emplace without allocation") {
+        TestMap map(4u);
+
+        // Reserve 16 slots (4 slabs of 4)
+        map.reserve(TestMap::size_type(16u));
+
+        // Emplace 16 elements - should not need new allocation
+        for (int i = 0; i < 16; ++i) {
+            auto key = map.emplace(i);
+            CHECK(key != Key<16, 16, 0, int>::null());
+        }
+
+        CHECK(map.size().value == 16);
+    }
+
+    SUBCASE("reserve more than index space") {
+        // Use small index space (32-bit key: 8 index, 24 version)
+        using SmallMap = SlotMap<Key<8, 24, 0, int>>;
+        SmallMap map(4u);
+
+        // Reserve more than can fit - should cap at max (256 slots)
+        // Size has IndexBits+1 = 9 bits, so value 256 (max index+1) is valid
+        using size_value_type = SmallMap::size_type::value_type;
+        map.reserve(SmallMap::size_type(size_value_type(256u)));
+
+        // Can only fit 256 slots with 8-bit index
+        for (int i = 0; i < 256; ++i) {
+            auto key = map.emplace(i);
+            CHECK(key != Key<8, 24, 0, int>::null());
+        }
+
+        // 257th should return null key
+        auto extra_key = map.emplace(999);
+        CHECK(extra_key == Key<8, 24, 0, int>::null());
+    }
+}
+
+// ============================================================================
+// Slab Recycling Tests
+// ============================================================================
+
+TEST_CASE("SlotMap: slab recycling")
+{
+    // Use 32-bit key with 1-bit version (31 index bits) to force quick version
+    // exhaustion. Valid key sizes are 32, 64, 128.
+    using TestKey = Key<31, 1, 0, int>;
+    using TestMap = SlotMap<TestKey>;
+
+    SUBCASE("dead slots are not added to free list") {
+        TestMap map(4u);
+
+        // Emplace and erase twice to exhaust version on slot 0
+        auto key1 = map.emplace(1);
+        CHECK(key1.version().value == 1);
+        map.erase(key1);
+
+        auto key2 = map.emplace(2);
+        // With 1-bit version, slot 0 now at version 1 (max)
+        // After erase, it becomes dead
+        map.erase(key2);
+
+        // Next emplace should use a different slot
+        auto key3 = map.emplace(3);
+        CHECK(key3 != TestKey::null());
+
+        // The index should be different since slot 0 is dead
+        // (Unless recycling occurred, but we're just testing the slot is dead)
+    }
+
+    SUBCASE("slab can be recycled when all slots dead") {
+        TestMap map(4u);
+
+        // Exhaust all 4 slots in the slab
+        for (int cycle = 0; cycle < 2; ++cycle) {
+            for (int i = 0; i < 4; ++i) {
+                auto key = map.emplace(i);
+                CHECK(key != TestKey::null());
+                map.erase(key);
+            }
+        }
+
+        // All 4 slots should now be dead
+        // The slab should be recycled when we try to emplace more
+
+        // Emplace 4 more elements - should succeed via recycling
+        std::vector<TestKey> keys;
+        for (int i = 0; i < 4; ++i) {
+            auto key = map.emplace(i + 100);
+            CHECK(key != TestKey::null());
+            keys.push_back(key);
+        }
+
+        CHECK(map.size().value == 4);
+
+        // All values should be accessible
+        for (int i = 0; i < 4; ++i) {
+            int val = 0;
+            CHECK(
+                map.use(keys[static_cast<std::size_t>(i)], [&](int const & v) {
+                    val = v;
+                }));
+            CHECK(val == i + 100);
+        }
+    }
+
+    SUBCASE("version exhausted key becomes invalid") {
+        // Use a key type with more version bits so we can test reuse
+        using Key2Bit = Key<30, 2, 0, int>;
+        using Map2Bit = SlotMap<Key2Bit>;
+        Map2Bit map(4u);
+
+        // First emplace uses slot 0, version starts at 1
+        auto key1 = map.emplace(1);
+        CHECK(key1.version().value == 1);
+        map.erase(key1);
+
+        // Second emplace reuses slot 0, version is now 2
+        auto key2 = map.emplace(2);
+        CHECK(key2.index() == key1.index()); // Same slot
+        CHECK(key2.version().value == 2);
+
+        // key1 should be invalid (version mismatch)
+        CHECK(not map.contains(key1));
+        CHECK(map.contains(key2));
+
+        map.erase(key2);
+
+        // key2 should also be invalid now
+        CHECK(not map.contains(key2));
+
+        // Third emplace reuses slot 0, version is now 3 (max for 2-bit)
+        auto key3 = map.emplace(3);
+        CHECK(key3.index() == key1.index());
+        CHECK(key3.version().value == 3);
+
+        map.erase(key3);
+
+        // Slot 0 is now dead (version exhausted)
+        // Fourth emplace should use a different slot
+        auto key4 = map.emplace(4);
+        CHECK(key4.index() != key1.index()); // Different slot
+        CHECK(key4 != Key2Bit::null());
+    }
+}
+
+// ============================================================================
 // Type Traits
 // ============================================================================
 
@@ -1765,6 +2007,87 @@ TEST_CASE("SlotMap: property-based copy assignment")
 
         // Source should be unchanged
         RC_ASSERT(source.size().value == source_ref.size());
+    });
+}
+
+// ============================================================================
+// Property-Based Tests for Pop
+// ============================================================================
+
+TEST_CASE("SlotMap: property-based pop returns correct values")
+{
+    rc::check("pop returns the correct value", []() {
+        SlotMap<Key<16, 15, 1, int>> map;
+        std::map<Key<16, 15, 1, int>, int> reference;
+
+        auto const count = *rc::gen::inRange<std::size_t>(1, 50);
+
+        for (std::size_t i = 0; i < count; ++i) {
+            auto value = *rc::gen::arbitrary<int>();
+            auto key = map.emplace(value);
+            reference[key] = value;
+        }
+
+        // Pop random elements
+        auto const pop_count = *rc::gen::inRange<std::size_t>(1, count + 1);
+        std::vector<Key<16, 15, 1, int>> keys_to_pop;
+        for (auto const & [key, _] : reference) {
+            if (keys_to_pop.size() < pop_count) {
+                keys_to_pop.push_back(key);
+            }
+        }
+
+        for (auto key : keys_to_pop) {
+            auto result = map.pop(key);
+            RC_ASSERT(result.has_value());
+            RC_ASSERT(result.value() == reference[key]);
+            reference.erase(key);
+        }
+
+        RC_ASSERT(map.size().value == reference.size());
+
+        // Remaining elements should still be accessible
+        for (auto const & [key, expected] : reference) {
+            int found = 0;
+            RC_ASSERT(map.use(key, [&](int const & v) { found = v; }));
+            RC_ASSERT(found == expected);
+        }
+    });
+}
+
+TEST_CASE("SlotMap: property-based pop vs erase equivalence")
+{
+    rc::check("pop and erase have same effect on map state", []() {
+        SlotMap<Key<16, 15, 1, int>> map1;
+        SlotMap<Key<16, 15, 1, int>> map2;
+
+        auto const count = *rc::gen::inRange<std::size_t>(1, 30);
+        std::vector<Key<16, 15, 1, int>> keys;
+
+        // Build identical maps
+        for (std::size_t i = 0; i < count; ++i) {
+            auto value = *rc::gen::arbitrary<int>();
+            auto key1 = map1.emplace(value);
+            auto key2 = map2.emplace(value);
+            RC_ASSERT(key1 == key2);
+            keys.push_back(key1);
+        }
+
+        // Remove some elements: use pop on map1, erase on map2
+        auto const remove_count = *rc::gen::inRange<std::size_t>(0, count);
+        for (std::size_t i = 0; i < remove_count; ++i) {
+            auto key = keys[i];
+            (void)map1.pop(key);
+            map2.erase(key);
+        }
+
+        // Maps should have same size
+        RC_ASSERT(map1.size().value == map2.size().value);
+
+        // Same keys should be valid/invalid in both
+        for (auto key : keys) {
+            RC_ASSERT(map1.contains(key) == map2.contains(key));
+        }
     });
 }
 

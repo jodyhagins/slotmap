@@ -13,11 +13,10 @@
 
 #include <bit>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
-
-#include <iostream>
 
 namespace wjh::slotmap {
 
@@ -183,6 +182,21 @@ public:
     bool erase(key_type key);
 
     /**
+     * Remove an element and return it.
+     *
+     * If key is valid, moves the element out, destroys the slot's value,
+     * and frees or retires the slot.
+     *
+     * @param key The key of the element to remove
+     * @return The moved element wrapped in optional, or nullopt if key invalid
+     *
+     * @note Only available if T is move constructible
+     */
+    [[nodiscard]]
+    std::optional<value_type> pop(key_type key)
+    requires std::is_move_constructible_v<value_type>;
+
+    /**
      * Swap contents with another SlotMap.
      *
      * Exchanges the contents of this SlotMap with another.
@@ -257,6 +271,16 @@ public:
     [[nodiscard]]
     size_type size() const noexcept;
 
+    /**
+     * Pre-allocate enough slabs to hold at least n elements.
+     *
+     * Useful for avoiding allocations during hot paths.
+     *
+     * @param n Number of elements to reserve space for
+     * @throws std::bad_alloc if allocation fails
+     */
+    void reserve(size_type n);
+
     // ========================================================================
     // Implementation Details (private)
     // ========================================================================
@@ -284,6 +308,7 @@ private:
     void clear_slabs() noexcept;
     bool allocate_new_slab();
     void initialize_slab_free_list(slab_type * slab, index_type base);
+    void try_recycle_slab(std::size_t slab_idx);
 };
 
 } // namespace wjh::slotmap

@@ -1070,12 +1070,12 @@ RC_GTEST_PROP(SlotMap, insert_find_roundtrip, ()) {
 
 ## 🚀 RESUME HERE - Next Agent Instructions
 
-**Status:** Phase 5 is complete. Begin Phase 6.
+**Status:** Phase 6 is complete. Begin Phase 7.
 
 **What's done:**
 - `src/wjh/slotmap/detail/Slot.hpp` / `Slot.ipp` - Complete with tests
-- `src/wjh/slotmap/detail/Slab.hpp` / `Slab.ipp` - Complete with tests (includes alive bitmap, emplace, destroy, clone)
-- `src/wjh/slotmap/SlotMap.hpp` / `SlotMap.ipp` - Core operations + iteration/bulk ops + copy/move/swap complete with tests
+- `src/wjh/slotmap/detail/Slab.hpp` / `Slab.ipp` - Complete with tests (includes alive bitmap, emplace, destroy, clone, recycle)
+- `src/wjh/slotmap/SlotMap.hpp` / `SlotMap.ipp` - Full implementation with copy/move/swap, pop, reserve, slab recycling
 - Tests pass: `ctest --output-on-failure --test-dir build`
 
 **Key design decisions to understand:**
@@ -1104,17 +1104,19 @@ RC_GTEST_PROP(SlotMap, insert_find_roundtrip, ()) {
 
 12. **Copy operations use `Slab::clone()`**: Each slab is cloned independently. Copy assignment uses copy-and-swap for strong exception safety.
 
+13. **Slab recycling**: When all slots in a slab become dead (version exhausted), `try_recycle_slab()` moves it to a new index position with reset versions.
+
+14. **Valid key sizes**: Only 32-bit, 64-bit, and 128-bit keys are supported (determined by `storage_type` specializations in detail.hpp).
+
 **Next steps:**
 1. Read this DESIGN.md thoroughly
-2. Begin Phase 6: Implement `pop()`, `reserve()`, and slab recycling
+2. Begin Phase 7: Additional testing - exception safety tests, edge case tests
 3. Follow the coding standards in CLAUDE.md
 4. Build: `cmake --build build`
 5. Test: `ctest --output-on-failure --test-dir build`
 
 **Files to modify:**
-- `src/wjh/slotmap/SlotMap.hpp` - Add pop(), reserve() declarations
-- `src/wjh/slotmap/SlotMap.ipp` - Add implementations, add slab recycling to erase()
-- `src/wjh/slotmap/tests/SlotMap_ut.cpp` - Add tests
+- `src/wjh/slotmap/tests/SlotMap_ut.cpp` - Add exception safety and edge case tests
 
 ---
 
@@ -1200,12 +1202,19 @@ RC_GTEST_PROP(SlotMap, insert_find_roundtrip, ()) {
 - Copy operations are only available when `std::is_copy_constructible_v<T>` is true
 - Comprehensive property-based tests verify copy independence and data preservation
 
-### Phase 6: Additional Features
+### Phase 6: Additional Features ✅ COMPLETED
 
-- [ ] Implement `pop()`
-- [ ] Implement `reserve()`
-- [ ] Implement slab recycling (in erase when slab becomes exhausted)
-- [ ] Tests for all public interfaces
+- [x] Implement `pop()`
+- [x] Implement `reserve()`
+- [x] Implement slab recycling (in erase when slab becomes exhausted)
+- [x] Tests for all public interfaces
+
+**Implementation Notes from Phase 6:**
+- `pop(key)` returns `std::optional<value_type>`, moving the value out before erasing. Only available when `std::is_move_constructible_v<T>` is true.
+- `reserve(n)` pre-allocates slabs to hold at least n elements, avoiding allocations during hot paths.
+- Slab recycling: when a slot's version is exhausted, `destroy()` returns false and the slot is marked dead. When ALL slots in a slab are dead (`can_be_recycled()`), `try_recycle_slab()` moves the slab to a new index position and resets all versions to 0.
+- `Slab::recycle(first_index, last_next)` resets dead_count, re-initializes the free list chain within the slab, and clears the bitmap.
+- Recycling only occurs if there's room in the index space for the new slab position.
 
 ### Phase 7: Testing
 

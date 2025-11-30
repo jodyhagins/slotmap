@@ -102,18 +102,14 @@ requires std::is_copy_constructible_v<T>
         auto * dst_mem = reinterpret_cast<std::byte *>(new_slab + 1);
 
         for (naked_size_type i = 0; i < slots_per_slab_; ++i) {
-            auto const idx = index_type(naked_index_type(i));
             auto * dst_slot = ::new (static_cast<void *>(dst_mem)) slot_type{};
+            auto & src = src_slots[i];
 
-            // Copy version
-            dst_slot->set_version(src_slots[i].version());
-
-            if (is_alive(idx)) {
-                // Copy the value
-                dst_slot->emplace(src_slots[i].value());
+            dst_slot->set_version(src.version());
+            if (is_alive(index_type(naked_index_type(i)))) {
+                dst_slot->emplace(src.value());
             } else {
-                // Copy the next link
-                dst_slot->set_next(src_slots[i].next());
+                dst_slot->set_next(src.next());
             }
 
             dst_mem += sizeof(slot_type);
@@ -127,16 +123,17 @@ requires std::is_copy_constructible_v<T>
 
     } catch (...) {
         // Clean up partially constructed slots
-        auto * dst_slots = std::launder(
-            reinterpret_cast<slot_type *>(new_slab + 1));
+        auto * dst_mem = reinterpret_cast<std::byte *>(new_slab + 1);
         for (naked_size_type i = 0; i < slots_constructed; ++i) {
-            auto const idx = index_type(naked_index_type(i));
-            if (is_alive(idx)) {
-                dst_slots[i].destroy();
+            auto * dst_slot = std::launder(
+                reinterpret_cast<slot_type *>(dst_mem));
+            if (is_alive(index_type(naked_index_type(i)))) {
+                dst_slot->destroy();
             }
-            dst_slots[i].~slot_type();
+            std::destroy_at(dst_slot);
+            dst_mem += sizeof(slot_type);
         }
-        new_slab->~Slab();
+        std::destroy_at(new_slab);
         ::operator delete (raw, std::align_val_t{alignof(Slab)});
         throw;
     }
@@ -266,14 +263,14 @@ recycle(index_type first_index, size_type last_next)
     auto const end = this->slots() + slots_per_slab_ - 1;
     for (auto slot = this->slots(); slot != end; ++slot) {
         first_index.value += 1;
-        slot->set_version(version_type{0});
+        slot->set_version(version_type{});
         slot->set_next(first_index);
     }
-    end->set_version(version_type{0});
+    end->set_version(version_type{});
     end->set_next(last_next);
 
     // Make sure...
-    std::memset(bitmap(), 0, bitmap_size(slots_per_slab_));
+    std::memset(bitmap(), 0, bitmap_size(size_type(slots_per_slab_)));
 }
 
 template <typename T, typename IndexT, typename VersionT, typename SizeT>
@@ -340,7 +337,7 @@ bool
 Slab<T, IndexT, VersionT, SizeT>::
 are_all_dead() const
 {
-    auto const limit = bitmap_size(slots_per_slab_);
+    auto const limit = bitmap_size(size_type(slots_per_slab_));
     auto const bytes = bitmap();
     for (std::size_t i = 0; i < limit; ++i) {
         if (bytes[i] != std::byte{0}) {
