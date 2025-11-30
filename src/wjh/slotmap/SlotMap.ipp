@@ -281,7 +281,7 @@ template <typename KeyT>
 template <typename... Args>
 SlotMap<KeyT>::key_type
 SlotMap<KeyT>::
-emplace(Args &&... args)
+try_emplace(Args &&... args)
 {
     // Check if free list is empty, allocate new slab if needed
     if (free_list_head_ == end_of_free_list) {
@@ -307,6 +307,20 @@ emplace(Args &&... args)
 
     // TODO: allow user to set a default-user-type-value that gets used here.
     return key_type(idx, ver, user_type{});
+}
+
+template <typename KeyT>
+template <typename... Args>
+SlotMap<KeyT>::key_type
+SlotMap<KeyT>::
+emplace(Args &&... args)
+{
+    auto key = try_emplace(std::forward<Args>(args)...);
+    if (key.is_null()) {
+        throw std::length_error(
+            "SlotMap: capacity exhausted, cannot emplace new element");
+    }
+    return key;
 }
 
 template <typename KeyT>

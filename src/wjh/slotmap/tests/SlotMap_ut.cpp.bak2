@@ -434,8 +434,7 @@ TEST_CASE("SlotMap: emplace throws when capacity exhausted")
     CHECK(map.size().value == 256); // Size unchanged
 }
 
-TEST_CASE("SlotMap: emplace and try_emplace behave identically when capacity "
-          "available")
+TEST_CASE("SlotMap: emplace and try_emplace behave identically when capacity available")
 {
     SlotMap<Key<int, 16, 16>> map1;
     SlotMap<Key<int, 16, 16>> map2;
@@ -460,7 +459,7 @@ TEST_CASE("SlotMap: emplace throws, try_emplace returns null on exhaustion")
     // Fill both maps
     for (int i = 0; i < 16; ++i) {
         (void)map1.emplace(i);
-        (void)map2.try_emplace(i);
+        map2.try_emplace(i);
     }
 
     // emplace should throw

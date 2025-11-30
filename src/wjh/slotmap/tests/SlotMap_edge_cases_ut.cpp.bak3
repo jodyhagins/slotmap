@@ -225,7 +225,7 @@ TEST_CASE("SlotMap: edge case - 1-bit version field")
 
         // Even with 1-bit version causing quick slot death, we should still be
         // able to emplace more elements (from other slots or recycled slabs)
-        auto key2 = map.try_emplace(2);
+        auto key2 = map.emplace(2);
         CHECK(not key2.is_null());
         CHECK(map.contains(key2));
 
@@ -265,7 +265,7 @@ TEST_CASE("SlotMap: edge case - 1-bit index field")
         CHECK(map.size().value == 2);
 
         // Third emplace should fail
-        auto key2 = map.try_emplace(2);
+        auto key2 = map.emplace(2);
         CHECK(key2.is_null());
     }
 
@@ -386,7 +386,7 @@ TEST_CASE("SlotMap: edge case - maximum slab size")
         CHECK(map.size().value == 256);
 
         // 257th should fail
-        auto overflow = map.try_emplace(999);
+        auto overflow = map.emplace(999);
         CHECK(overflow.is_null());
     }
 }
@@ -407,7 +407,7 @@ TEST_CASE("SlotMap: edge case - very small key (4+4+24=32)")
         CHECK(map.size().value == 16);
 
         // 17th should fail
-        auto overflow = map.try_emplace(999);
+        auto overflow = map.emplace(999);
         CHECK(overflow.is_null());
     }
 

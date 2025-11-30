@@ -162,12 +162,25 @@ public:
      * Construct a new element in-place.
      *
      * @param args Arguments to forward to T's constructor
+     * @return A valid key for the new element (never null)
+     * @throws std::length_error if no slots available (capacity exhausted)
+     * @throws Any exception thrown by T's constructor (strong guarantee)
+     */
+    template <typename... Args>
+    [[nodiscard]]
+    key_type emplace(Args &&... args);
+
+    /**
+     * Try to construct a new element in-place.
+     *
+     * @param args Arguments to forward to T's constructor
      * @return A valid key for the new element, or null key if no slots
      * available
      * @throws Any exception thrown by T's constructor (strong guarantee)
      */
     template <typename... Args>
-    key_type emplace(Args &&... args);
+    [[nodiscard]]
+    key_type try_emplace(Args &&... args);
 
     /**
      * Erase an element by key.

@@ -37,11 +37,11 @@ NOTE: This is an initial design. As implementation unfolds, we may need to chang
 | **User Bits** | Optional user-defined metadata stored within the key. |
 | **Slot** | Storage unit containing either a value (when alive) or a free-list link (when free). |
 | **Slab** | Fixed-size memory block containing an array of slots plus metadata and alive bitmap. |
-| **Null Key** | A key with all bits zero (version=0, index=0, user=0). Never returned by `emplace()`. |
+| **Null Key** | A key with all bits zero (version=0, index=0, user=0). Never returned by `emplace()` or `try_emplace()` for a valid object. |
 
 ### Invariants
 
-1. **Null Key Safety**: The null key (all bits zero: version=0, index=0, user=0) is never returned by `emplace()`. This is achieved by initializing slot 0 of the first slab to version 1. All other slots start at version 0.
+1. **Null Key Safety**: The null key (all bits zero: version=0, index=0, user=0) is never returned by `emplace()` or `try_emplace()` for a valid object. This is achieved by initializing slot 0 of the first slab to version 1. All other slots start at version 0. `emplace()` throws `std::length_error` on capacity exhaustion, while `try_emplace()` returns the null key.
 2. **Key Uniqueness**: A key uniquely identifies a specific object. Once erased, that exact key is never valid again.
 3. **ABA Protection**: Version numbers prevent returning stale data when a slot is reused.
 4. **Contiguous Storage**: Values within a slab are stored contiguously for cache efficiency.
@@ -509,14 +509,29 @@ bool contains(key_type key) const;
 
 ```cpp
 template <typename... Args>
-key_type emplace(Args&&... args);
+[[nodiscard]] key_type emplace(Args&&... args);
 ```
 
 - **Effect**: Constructs a new element in-place with the given arguments
-- **Returns**: A valid key for the new element, or `key_type::null()` if no slots available
+- **Returns**: A valid key for the new element (never returns null key)
+- **Throws**: `std::length_error` if capacity is exhausted (no slots available); any exception from `T`'s constructor
+- **Exception Safety**: Strong guarantee. If construction throws or capacity is exhausted, the slot remains free.
+- **Postconditions**: `contains(key) == true` and `size()` increased by 1
+- **Note**: The returned key is never the null key. Slot 0 of the first slab starts at version 1 to ensure this; all other slots may return version 0 on their first use. Use `try_emplace()` for non-throwing behavior on capacity exhaustion.
+
+#### try_emplace()
+
+```cpp
+template <typename... Args>
+[[nodiscard]] key_type try_emplace(Args&&... args);
+```
+
+- **Effect**: Constructs a new element in-place with the given arguments
+- **Returns**: A valid key for the new element, or `key_type::null()` if capacity is exhausted (no slots available)
+- **Throws**: Any exception from `T`'s constructor (but NOT `std::length_error`)
 - **Exception Safety**: Strong guarantee. If construction throws, the slot remains free.
 - **Postconditions**: If returned key is not null, `contains(key) == true` and `size()` increased by 1
-- **Note**: The returned key is never the null key. Slot 0 of the first slab starts at version 1 to ensure this; all other slots may return version 0 on their first use.
+- **Note**: This is the non-throwing alternative to `emplace()`. The returned key is never the null key unless capacity is exhausted. Always check `key.is_null()` after calling.
 
 #### erase()
 
@@ -812,7 +827,8 @@ static constexpr version_type max_version = version_type(version_type::mask);
 | Move ctor | No | - |
 | Move assign | No | - |
 | Destructor | No | - |
-| emplace() | Yes (from `T` ctor) | Strong |
+| emplace() | Yes (`length_error` if capacity exhausted, from `T` ctor) | Strong |
+| try_emplace() | Yes (from `T` ctor, but NOT `length_error`) | Strong |
 | erase() | No | - |
 | pop() | Conditional (if T's move throws) | Strong if noexcept |
 | clear() | No | - |

@@ -35,7 +35,7 @@ struct Player {
 using PlayerKey = wjh::SlotMapKey<Player, 16, 16>;
 wjh::SlotMap<PlayerKey> players;
 
-// Insert - container generates the key
+// Insert - container generates the key (throws if capacity exhausted)
 auto key = players.emplace("Alice", 100);
 
 // Access via callback
@@ -62,7 +62,7 @@ players.erase(key);
 - **Fixed capacity**: Maximum simultaneous elements = 2^IndexBits; maximum total insertions = 2^IndexBits × 2^VersionBits - 1
 - **No iterators**: Access is via `use()` callback or `for_each()` - deliberate design to prevent dangling iterator bugs
 - **Constexpr keys**: All key operations are constexpr
-- **Null key safety**: The all-zeros key is reserved and never returned by `emplace()` for a valid object (it is returned if the slotmap is full and no more elements can be added).
+- **Null key safety**: The all-zeros key is reserved and never returned by `emplace()`. The null key can be obtained from `try_emplace()` when capacity is exhausted.
 
 ## How This Implementation Differs
 
@@ -195,7 +195,14 @@ wjh::SlotMap<MyKey> map(1024);
 
 ```cpp
 // Emplace (forwards arguments to T's constructor)
+// Throws std::length_error if capacity exhausted
 auto key = map.emplace(arg1, arg2, ...);
+
+// Try emplace (returns null key if capacity exhausted, does not throw)
+auto key = map.try_emplace(arg1, arg2, ...);
+if (key.is_null()) {
+    // Handle capacity exhaustion
+}
 
 // Erase (returns true if element was found and erased)
 bool erased = map.erase(key);
@@ -345,9 +352,21 @@ The all-zeros key (index=0, version=0, user=0) is reserved as the null key:
 auto null_key = MyKey::null();
 assert(null_key.is_null());
 
-// The container only returns the null key if there is no room for a new item.
-auto key = map.emplace(value);
-assert(map.contains(key) || key.is_null());
+// emplace() throws if capacity exhausted
+try {
+    auto key = map.emplace(value);
+    assert(map.contains(key));  // Always valid if no exception
+} catch (std::length_error const &) {
+    // Handle capacity exhaustion
+}
+
+// try_emplace() returns null key if capacity exhausted (non-throwing)
+auto key = map.try_emplace(value);
+if (key.is_null()) {
+    // Handle capacity exhaustion gracefully
+} else {
+    assert(map.contains(key));
+}
 
 // Operations on null keys are safe (return false/nullopt)
 assert(not map.contains(null_key));
@@ -374,7 +393,8 @@ Recycling is automatic and transparent. It only fails if the index space is comp
 
 | Operation | Exception Safety | Notes |
 |-----------|------------------|-------|
-| `emplace()` | Strong | If T's constructor throws, slot remains free |
+| `emplace()` | Strong | If T's constructor throws, slot remains free; throws std::length_error if capacity exhausted |
+| `try_emplace()` | Strong | If T's constructor throws, slot remains free; returns null key if capacity exhausted (no throw) |
 | `erase()` | No-throw | Assumes T's destructor doesn't throw |
 | `pop()` | Strong | If T is nothrow move constructible |
 | `use()` | Basic | Container state unchanged if callback throws |

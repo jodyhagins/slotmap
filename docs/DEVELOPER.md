@@ -769,17 +769,21 @@ bool valid = map.contains(k1);  // still false! Old key is permanently invalid
 
 ## Exception Safety Implementation
 
-### emplace()
+### emplace() and try_emplace()
 
 Goal: Strong exception guarantee (if T's constructor throws, SlotMap is unchanged)
 
+Both `emplace()` and `try_emplace()` share the same core implementation. The difference is in handling capacity exhaustion:
+- `emplace()` throws `std::length_error` when capacity is exhausted
+- `try_emplace()` returns the null key when capacity is exhausted
+
 ```cpp
 template <typename... Args>
-key_type emplace(Args &&... args) {
-    // 1. Allocate slot (modify free_list_head_) - NO THROW
+key_type try_emplace(Args &&... args) {
+    // 1. Check capacity - NO THROW
     if (free_list_head_ == end_of_free_list) {
         if (not allocate_new_slab()) {  // MAY THROW (std::bad_alloc)
-            return key_type::null();
+            return key_type::null();  // try_emplace returns null on exhaustion
         }
     }
 
@@ -791,6 +795,28 @@ key_type emplace(Args &&... args) {
     auto [ver, next] = slab->emplace(slot_idx, std::forward<Args>(args)...);
 
     // 3. Update state - NO THROW (only reached if emplace succeeded)
+    free_list_head_ = next;
+    ++size_;
+
+    return key_type(idx, ver, user_type{});
+}
+
+template <typename... Args>
+key_type emplace(Args &&... args) {
+    // 1. Check capacity - MAY THROW (std::length_error)
+    if (free_list_head_ == end_of_free_list) {
+        if (not allocate_new_slab()) {  // MAY THROW (std::bad_alloc)
+            throw std::length_error("SlotMap capacity exhausted");  // emplace throws
+        }
+    }
+
+    // Rest is identical to try_emplace
+    auto const idx = index_type(naked_index_type(free_list_head_.value));
+    auto* slab = get_slab(idx);
+    auto const slot_idx = /* compute */;
+
+    auto [ver, next] = slab->emplace(slot_idx, std::forward<Args>(args)...);
+
     free_list_head_ = next;
     ++size_;
 

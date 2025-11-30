@@ -624,7 +624,7 @@ TEST_CASE("SlotMap: pop")
     SUBCASE("pop multiple elements") {
         SlotMap<Key<int, 16, 16>> map;
         auto key1 = map.emplace(1);
-        auto key2 = map.try_emplace(2);
+        auto key2 = map.emplace(2);
         auto key3 = map.emplace(3);
 
         CHECK(map.size().value == 3);
@@ -691,7 +691,7 @@ TEST_CASE("SlotMap: reserve")
         }
 
         // 257th should return null key
-        auto extra_key = map.try_emplace(999);
+        auto extra_key = map.emplace(999);
         CHECK(extra_key == Key<int, 8, 24>::null());
     }
 }

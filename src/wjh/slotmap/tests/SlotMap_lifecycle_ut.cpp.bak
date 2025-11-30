@@ -283,10 +283,10 @@ TEST_CASE("SlotMap: swap")
         SlotMap<Key<int, 16, 16>> map2(8u);
 
         for (int i = 0; i < 10; ++i) {
-            (void)map1.emplace(i);
+            map1.emplace(i);
         }
         for (int i = 100; i < 105; ++i) {
-            (void)map2.emplace(i);
+            map2.emplace(i);
         }
 
         map1.swap(map2);
@@ -550,8 +550,8 @@ TEST_CASE("SlotMap: copy assignment")
             SlotMap<Key<Counter, 16, 16>> original;
             SlotMap<Key<Counter, 16, 16>> target;
 
-            (void)target.emplace();
-            (void)target.emplace();
+            target.emplace();
+            target.emplace();
 
             CHECK(destructor_count == 0);
 
@@ -592,7 +592,7 @@ TEST_CASE("SlotMap: pop")
 
     SUBCASE("pop returns nullopt for null key") {
         SlotMap<Key<int, 16, 16>> map;
-        (void)map.emplace(42);
+        map.emplace(42);
 
         auto result = map.pop(Key<int, 16, 16>::null());
 
@@ -624,7 +624,7 @@ TEST_CASE("SlotMap: pop")
     SUBCASE("pop multiple elements") {
         SlotMap<Key<int, 16, 16>> map;
         auto key1 = map.emplace(1);
-        auto key2 = map.try_emplace(2);
+        auto key2 = map.emplace(2);
         auto key3 = map.emplace(3);
 
         CHECK(map.size().value == 3);
@@ -691,7 +691,7 @@ TEST_CASE("SlotMap: reserve")
         }
 
         // 257th should return null key
-        auto extra_key = map.try_emplace(999);
+        auto extra_key = map.emplace(999);
         CHECK(extra_key == Key<int, 8, 24>::null());
     }
 }

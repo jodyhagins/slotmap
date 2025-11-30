@@ -208,7 +208,7 @@ static constexpr Key null() noexcept;
 
 **Description:**
 
-Returns the null key (all bits zero). The null key is used to indicate "no element" or failure conditions (e.g., when `emplace()` fails due to capacity exhaustion).
+Returns the null key (all bits zero). The null key is used to indicate "no element" or failure conditions (e.g., when `try_emplace()` fails due to capacity exhaustion).
 
 **Returns:** A key with all bits set to zero.
 
@@ -218,7 +218,8 @@ Returns the null key (all bits zero). The null key is used to indicate "no eleme
 using MyKey = wjh::SlotMapKey<int, 16, 16>;
 wjh::SlotMap<MyKey> map;
 
-auto key = map.emplace(42);
+// try_emplace returns null key on capacity exhaustion
+auto key = map.try_emplace(42);
 if (key == MyKey::null()) {
     // Capacity exhausted - handle error
     std::cerr << "Failed to insert element\n";
@@ -229,6 +230,14 @@ if (key == MyKey::null()) {
 // Equivalent check using is_null()
 if (key.is_null()) {
     // Handle error
+}
+
+// emplace throws on capacity exhaustion
+try {
+    auto key2 = map.emplace(99);
+    // Key is always valid here
+} catch (std::length_error const &) {
+    std::cerr << "Capacity exhausted\n";
 }
 ```
 
@@ -391,7 +400,17 @@ constexpr bool is_null() const noexcept;
 **Example:**
 
 ```cpp
-auto key = map.emplace(42);
+// With emplace (throws on failure)
+try {
+    auto key = map.emplace(42);
+    // Key is always valid here
+    map.use(key, [](int & val) { val *= 2; });
+} catch (std::length_error const &) {
+    std::cerr << "Emplace failed - capacity exhausted\n";
+}
+
+// With try_emplace (returns null key on failure)
+auto key = map.try_emplace(42);
 if (key.is_null()) {
     std::cerr << "Emplace failed - capacity exhausted\n";
     return;
@@ -933,23 +952,24 @@ assert(not map2.contains(k2));
 
 ```cpp
 template <typename... Args>
-key_type emplace(Args &&... args);
+[[nodiscard]] key_type emplace(Args &&... args);
 ```
 
-**Description:** Constructs a new element in-place with the provided arguments. Returns a key for the new element.
+**Description:** Constructs a new element in-place with the provided arguments. Returns a key for the new element. If capacity is exhausted, throws `std::length_error`.
 
 **Parameters:**
 - `args` - Arguments to forward to `mapped_type`'s constructor.
 
 **Returns:**
-- A valid key referring to the new element, OR
-- `key_type::null()` if capacity is exhausted (no free slots available).
+- A valid key referring to the new element (never returns null key).
 
-**Throws:** Any exception thrown by `mapped_type`'s constructor.
+**Throws:**
+- Any exception thrown by `mapped_type`'s constructor.
+- `std::length_error` if capacity is exhausted (no free slots available).
 
-**Exception Safety:** Strong guarantee. If construction throws, the map is unchanged (no slot is consumed).
+**Exception Safety:** Strong guarantee. If construction throws or capacity is exhausted, the map is unchanged (no slot is consumed).
 
-**Important:** The returned key is NEVER null unless capacity is exhausted. Always check `key.is_null()` if exhaustion is possible.
+**Important:** The returned key is ALWAYS valid. If capacity is exhausted, an exception is thrown instead of returning a null key. Use `try_emplace()` for non-throwing behavior.
 
 **Example:**
 
@@ -964,25 +984,19 @@ struct Player {
 using PlayerKey = wjh::SlotMapKey<Player, 16, 16>;
 wjh::SlotMap<PlayerKey> players;
 
-// Construct in-place
-auto k1 = players.emplace("Alice", 100);
-assert(not k1.is_null());
+// Construct in-place (throws on capacity exhaustion)
+try {
+    auto k1 = players.emplace("Alice", 100);
+    auto k2 = players.emplace("Bob", 75);
+    auto k3 = players.emplace("Charlie", 50);
 
-auto k2 = players.emplace("Bob", 75);
-assert(not k2.is_null());
-
-// Check for capacity exhaustion
-auto k3 = players.emplace("Charlie", 50);
-if (k3.is_null()) {
+    // Keys are always valid here
+    players.use(k1, [](Player & p) {
+        std::cout << p.name << " has " << p.health << " health\n";
+    });
+} catch (std::length_error const &) {
     std::cerr << "Cannot add more players - capacity exhausted\n";
-} else {
-    std::cout << "Player added successfully\n";
 }
-
-// Use the keys
-players.use(k1, [](Player & p) {
-    std::cout << p.name << " has " << p.health << " health\n";
-});
 ```
 
 **Capacity Limits:**
@@ -991,7 +1005,56 @@ Capacity is exhausted when:
 1. All 2^IndexBits slots are in use (map is full), OR
 2. All slots have been reused 2^VersionBits times (lifetime exhaustion).
 
-After exhaustion, `emplace()` returns the null key. See [Capacity and Lifetime Limits](#capacity-and-lifetime-limits) for details.
+After exhaustion, `emplace()` throws `std::length_error`. See [Capacity and Lifetime Limits](#capacity-and-lifetime-limits) for details.
+
+---
+
+#### try_emplace()
+
+```cpp
+template <typename... Args>
+[[nodiscard]] key_type try_emplace(Args &&... args);
+```
+
+**Description:** Constructs a new element in-place with the provided arguments. Returns a key for the new element, or the null key if capacity is exhausted. This is the non-throwing alternative to `emplace()`.
+
+**Parameters:**
+- `args` - Arguments to forward to `mapped_type`'s constructor.
+
+**Returns:**
+- A valid key referring to the new element, OR
+- `key_type::null()` if capacity is exhausted (no free slots available).
+
+**Throws:** Any exception thrown by `mapped_type`'s constructor (but NOT `std::length_error`).
+
+**Exception Safety:** Strong guarantee. If construction throws, the map is unchanged (no slot is consumed).
+
+**Important:** Use `try_emplace()` when you want to handle capacity exhaustion gracefully without exceptions. Always check `key.is_null()` after calling.
+
+**Example:**
+
+```cpp
+using PlayerKey = wjh::SlotMapKey<Player, 16, 16>;
+wjh::SlotMap<PlayerKey> players;
+
+// Construct in-place (returns null key on capacity exhaustion)
+auto k1 = players.try_emplace("Alice", 100);
+if (k1.is_null()) {
+    std::cerr << "Cannot add player - capacity exhausted\n";
+    return;
+}
+
+auto k2 = players.try_emplace("Bob", 75);
+if (k2.is_null()) {
+    std::cerr << "Cannot add player - capacity exhausted\n";
+    return;
+}
+
+// Use the keys
+players.use(k1, [](Player & p) {
+    std::cout << p.name << " has " << p.health << " health\n";
+});
+```
 
 ---
 
@@ -1578,18 +1641,27 @@ Each slot can be reused 2^VersionBits times (except the first slot of the first 
 
 ### When Capacity is Exhausted
 
-**Symptom:** `emplace()` returns the null key.
+**Symptom:** `emplace()` throws `std::length_error`, or `try_emplace()` returns the null key.
 
 **Handling:**
 
 ```cpp
-auto key = map.emplace(value);
+// Option 1: Use try_emplace for graceful error handling
+auto key = map.try_emplace(value);
 if (key.is_null()) {
     // Capacity exhausted
     // Options:
     // 1. Remove old elements to free slots
     // 2. Use a different map with larger IndexBits/VersionBits
     // 3. Report error to user
+    std::cerr << "Cannot add element - capacity exhausted\n";
+}
+
+// Option 2: Use emplace with exception handling
+try {
+    auto key = map.emplace(value);
+    // Key is always valid here
+} catch (std::length_error const &) {
     std::cerr << "Cannot add element - capacity exhausted\n";
 }
 ```
@@ -1678,7 +1750,8 @@ std::thread writer([&]() {
 
 | Operation           | Guarantee | Notes |
 |---------------------|-----------|-------|
-| `emplace()`         | Strong    | If `T`'s constructor throws, map is unchanged |
+| `emplace()`         | Strong    | If `T`'s constructor throws, map is unchanged; throws `std::length_error` if capacity exhausted |
+| `try_emplace()`     | Strong    | If `T`'s constructor throws, map is unchanged; returns null key if capacity exhausted (no throw) |
 | `erase()`           | No-throw  | Assumes `T`'s destructor is `noexcept` |
 | `pop()`             | Strong    | If `T`'s move is `noexcept`; otherwise basic |
 | `clear()`           | No-throw  | Assumes `T`'s destructor is `noexcept` |

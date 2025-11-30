@@ -93,7 +93,7 @@ TEST_CASE("for_each early exit")
     SlotMap<Key<int, 16, 16>> map;
 
     for (int i = 0; i < 100; ++i) {
-        (void)map.emplace(i);
+        map.emplace(i);
     }
 
     SUBCASE("stop after first element") {
@@ -124,8 +124,8 @@ TEST_CASE("for_each early exit")
 TEST_CASE("for_each with const map")
 {
     SlotMap<Key<int, 16, 16>> map;
-    (void)map.emplace(42);
-    (void)map.emplace(100);
+    map.emplace(42);
+    map.emplace(100);
 
     auto const & cmap = map;
 
@@ -299,9 +299,9 @@ TEST_CASE("clear destroys values")
 
     {
         SlotMap<Key<Counter, 16, 16>> map;
-        (void)map.emplace();
-        (void)map.emplace();
-        (void)map.emplace();
+        map.emplace();
+        map.emplace();
+        map.emplace();
 
         CHECK(destructor_count == 0);
 
@@ -353,7 +353,7 @@ TEST_CASE("reset basic")
 
     SUBCASE("reset with elements") {
         for (int i = 0; i < 100; ++i) {
-            (void)map.emplace(i);
+            map.emplace(i);
         }
 
         map.reset();
@@ -376,9 +376,9 @@ TEST_CASE("reset destroys values")
 
     {
         SlotMap<Key<Counter, 16, 16>> map;
-        (void)map.emplace();
-        (void)map.emplace();
-        (void)map.emplace();
+        map.emplace();
+        map.emplace();
+        map.emplace();
 
         CHECK(destructor_count == 0);
 
@@ -457,7 +457,7 @@ TEST_CASE("property-based reset returns to initial state")
         auto const count = *rc::gen::inRange<std::size_t>(1, 50);
 
         for (std::size_t i = 0; i < count; ++i) {
-            (void)map.emplace(*rc::gen::arbitrary<int>());
+            map.emplace(*rc::gen::arbitrary<int>());
         }
 
         map.reset();
@@ -612,7 +612,7 @@ TEST_CASE("property-based copy independence")
 
         auto const add_count = *rc::gen::inRange<std::size_t>(0, 20);
         for (std::size_t i = 0; i < add_count; ++i) {
-            (void)copy.emplace(*rc::gen::arbitrary<int>());
+            copy.emplace(*rc::gen::arbitrary<int>());
         }
 
         // Original should be unchanged
@@ -643,7 +643,7 @@ TEST_CASE("property-based copy assignment")
         }
 
         for (std::size_t i = 0; i < target_count; ++i) {
-            (void)target.emplace(*rc::gen::arbitrary<int>());
+            target.emplace(*rc::gen::arbitrary<int>());
         }
 
         target = source;
