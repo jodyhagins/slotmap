@@ -92,9 +92,35 @@ public:
      */
     explicit SlotMap(size_type slots_per_slab);
 
-    // Non-copyable for now (Phase 5)
-    SlotMap(SlotMap const &) = delete;
-    SlotMap & operator = (SlotMap const &) = delete;
+    /**
+     * Copy constructor.
+     *
+     * Creates a deep copy with identical structure. All keys valid in the
+     * source will be valid in the copy.
+     *
+     * @param other The SlotMap to copy from
+     * @throws std::bad_alloc if allocation fails
+     * @throws Any exception from T's copy constructor
+     *
+     * @note Only available if T is copy constructible
+     */
+    SlotMap(SlotMap const & other)
+    requires std::is_copy_constructible_v<value_type>;
+
+    /**
+     * Copy assignment operator.
+     *
+     * Replaces contents with a deep copy of other using copy-and-swap.
+     *
+     * @param other The SlotMap to copy from
+     * @return Reference to this
+     * @throws std::bad_alloc if allocation fails
+     * @throws Any exception from T's copy constructor
+     *
+     * @note Only available if T is copy constructible
+     */
+    SlotMap & operator = (SlotMap const & other)
+    requires std::is_copy_constructible_v<value_type>;
 
     SlotMap(SlotMap && other) noexcept;
     SlotMap & operator = (SlotMap && other) noexcept;
@@ -155,6 +181,15 @@ public:
      * @return true if an element was erased, false otherwise
      */
     bool erase(key_type key);
+
+    /**
+     * Swap contents with another SlotMap.
+     *
+     * Exchanges the contents of this SlotMap with another.
+     *
+     * @param other The SlotMap to swap with
+     */
+    void swap(SlotMap & other) noexcept;
 
     /**
      * Clear all elements from the container.

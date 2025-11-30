@@ -78,6 +78,71 @@ requires requires { size_type(slots_per_slab); }
 }
 
 template <typename T, typename IndexT, typename VersionT, typename SizeT>
+std::unique_ptr<Slab<T, IndexT, VersionT, SizeT>>
+Slab<T, IndexT, VersionT, SizeT>::
+clone() const
+requires std::is_copy_constructible_v<T>
+{
+    auto const slab_size = size_type(slots_per_slab_);
+
+    // Allocate raw memory with proper alignment
+    void * raw = ::operator new (
+        total_bytes_needed(slab_size),
+        std::align_val_t{alignof(Slab)});
+
+    // Construct the Slab header with same dead_count
+    auto * new_slab = ::new (raw) Slab(slab_size);
+    new_slab->dead_count_ = dead_count_;
+
+    // Track how many slots we've successfully copied (for exception safety)
+    naked_size_type slots_constructed = 0;
+
+    try {
+        auto const * src_slots = this->slots();
+        auto * dst_mem = reinterpret_cast<std::byte *>(new_slab + 1);
+
+        for (naked_size_type i = 0; i < slots_per_slab_; ++i) {
+            auto const idx = index_type(naked_index_type(i));
+            auto * dst_slot = ::new (static_cast<void *>(dst_mem)) slot_type{};
+
+            // Copy version
+            dst_slot->set_version(src_slots[i].version());
+
+            if (is_alive(idx)) {
+                // Copy the value
+                dst_slot->emplace(src_slots[i].value());
+            } else {
+                // Copy the next link
+                dst_slot->set_next(src_slots[i].next());
+            }
+
+            dst_mem += sizeof(slot_type);
+            ++slots_constructed;
+        }
+
+        // Copy the bitmap (dst_mem now points to bitmap start)
+        std::memcpy(dst_mem, bitmap(), bitmap_size(slab_size));
+
+        return std::unique_ptr<Slab>(new_slab);
+
+    } catch (...) {
+        // Clean up partially constructed slots
+        auto * dst_slots = std::launder(
+            reinterpret_cast<slot_type *>(new_slab + 1));
+        for (naked_size_type i = 0; i < slots_constructed; ++i) {
+            auto const idx = index_type(naked_index_type(i));
+            if (is_alive(idx)) {
+                dst_slots[i].destroy();
+            }
+            dst_slots[i].~slot_type();
+        }
+        new_slab->~Slab();
+        ::operator delete (raw, std::align_val_t{alignof(Slab)});
+        throw;
+    }
+}
+
+template <typename T, typename IndexT, typename VersionT, typename SizeT>
 Slab<T, IndexT, VersionT, SizeT>::
 ~Slab()
 {

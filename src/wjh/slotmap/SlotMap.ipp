@@ -27,6 +27,43 @@ SlotMap(size_type slots_per_slab)
 
 template <typename KeyT>
 SlotMap<KeyT>::
+SlotMap(SlotMap const & other)
+requires std::is_copy_constructible_v<value_type>
+: free_list_head_{other.free_list_head_}
+, size_{other.size_}
+, slots_per_slab_{other.slots_per_slab_}
+, log2_slots_per_slab_{other.log2_slots_per_slab_}
+, next_slab_base_index_{other.next_slab_base_index_}
+{
+    // Reserve space for all slabs
+    slabs_.reserve(other.slabs_.size());
+
+    // Clone each non-null slab
+    for (auto const & slab_ptr : other.slabs_) {
+        if (slab_ptr) {
+            slabs_.push_back(slab_ptr->clone());
+        } else {
+            slabs_.push_back(nullptr);
+        }
+    }
+}
+
+template <typename KeyT>
+SlotMap<KeyT> &
+SlotMap<KeyT>::
+operator = (SlotMap const & other)
+requires std::is_copy_constructible_v<value_type>
+{
+    if (this != &other) {
+        // Copy-and-swap idiom for strong exception safety
+        SlotMap copy(other);
+        swap(copy);
+    }
+    return *this;
+}
+
+template <typename KeyT>
+SlotMap<KeyT>::
 SlotMap(SlotMap && other) noexcept
 : slabs_{std::move(other.slabs_)}
 , free_list_head_{other.free_list_head_}
@@ -420,6 +457,20 @@ for_each(F && func) const
     }
 
     return size_type(visited);
+}
+
+template <typename KeyT>
+void
+SlotMap<KeyT>::
+swap(SlotMap & other) noexcept
+{
+    using std::swap;
+    swap(slabs_, other.slabs_);
+    swap(free_list_head_, other.free_list_head_);
+    swap(size_, other.size_);
+    swap(slots_per_slab_, other.slots_per_slab_);
+    swap(log2_slots_per_slab_, other.log2_slots_per_slab_);
+    swap(next_slab_base_index_, other.next_slab_base_index_);
 }
 
 template <typename KeyT>

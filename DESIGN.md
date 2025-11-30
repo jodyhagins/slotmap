@@ -1070,12 +1070,12 @@ RC_GTEST_PROP(SlotMap, insert_find_roundtrip, ()) {
 
 ## 🚀 RESUME HERE - Next Agent Instructions
 
-**Status:** Phase 4 is complete. Begin Phase 5.
+**Status:** Phase 5 is complete. Begin Phase 6.
 
 **What's done:**
 - `src/wjh/slotmap/detail/Slot.hpp` / `Slot.ipp` - Complete with tests
-- `src/wjh/slotmap/detail/Slab.hpp` / `Slab.ipp` - Complete with tests (includes alive bitmap, emplace, destroy)
-- `src/wjh/slotmap/SlotMap.hpp` / `SlotMap.ipp` - Core operations + iteration/bulk ops complete with tests
+- `src/wjh/slotmap/detail/Slab.hpp` / `Slab.ipp` - Complete with tests (includes alive bitmap, emplace, destroy, clone)
+- `src/wjh/slotmap/SlotMap.hpp` / `SlotMap.ipp` - Core operations + iteration/bulk ops + copy/move/swap complete with tests
 - Tests pass: `ctest --output-on-failure --test-dir build`
 
 **Key design decisions to understand:**
@@ -1102,16 +1102,18 @@ RC_GTEST_PROP(SlotMap, insert_find_roundtrip, ()) {
 
 11. **`clear()` vs `reset()`**: `clear()` retains memory and increments versions (invalidating keys); `reset()` deallocates everything and returns to initial state.
 
+12. **Copy operations use `Slab::clone()`**: Each slab is cloned independently. Copy assignment uses copy-and-swap for strong exception safety.
+
 **Next steps:**
 1. Read this DESIGN.md thoroughly
-2. Begin Phase 5: Implement copy operations and `swap()`
+2. Begin Phase 6: Implement `pop()`, `reserve()`, and slab recycling
 3. Follow the coding standards in CLAUDE.md
 4. Build: `cmake --build build`
 5. Test: `ctest --output-on-failure --test-dir build`
 
 **Files to modify:**
-- `src/wjh/slotmap/SlotMap.hpp` - Add/update copy constructor, copy assignment, swap declarations
-- `src/wjh/slotmap/SlotMap.ipp` - Add implementations
+- `src/wjh/slotmap/SlotMap.hpp` - Add pop(), reserve() declarations
+- `src/wjh/slotmap/SlotMap.ipp` - Add implementations, add slab recycling to erase()
 - `src/wjh/slotmap/tests/SlotMap_ut.cpp` - Add tests
 
 ---
@@ -1182,13 +1184,21 @@ RC_GTEST_PROP(SlotMap, insert_find_roundtrip, ()) {
 - `reset()` simply calls `clear_slabs()` which deallocates all slabs
 - Comprehensive property-based tests verify iteration visits all elements and clear/reset behavior
 
-### Phase 5: Copy/Move Operations
+### Phase 5: Copy/Move Operations ✅ COMPLETED
 
-- [ ] Move operations already implemented ✅
-- [ ] Implement copy constructor (if T is copyable)
-- [ ] Implement copy assignment (copy-and-swap)
-- [ ] Implement `swap()`
-- [ ] Tests for all public interfaces
+- [x] Move operations already implemented ✅
+- [x] Implement copy constructor (if T is copyable)
+- [x] Implement copy assignment (copy-and-swap)
+- [x] Implement `swap()`
+- [x] Tests for all public interfaces
+
+**Implementation Notes from Phase 5:**
+- `Slab::clone()` method added to support deep copying of slabs
+- Copy constructor clones all non-null slabs and copies metadata fields
+- Copy assignment uses copy-and-swap idiom for strong exception safety
+- `swap()` exchanges all member fields between two SlotMaps
+- Copy operations are only available when `std::is_copy_constructible_v<T>` is true
+- Comprehensive property-based tests verify copy independence and data preservation
 
 ### Phase 6: Additional Features
 

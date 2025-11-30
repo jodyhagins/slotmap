@@ -62,6 +62,22 @@ public:
     static std::unique_ptr<Slab> create(ValT slots_per_slab)
     requires requires { size_type(slots_per_slab); };
 
+    /**
+     * Create a deep copy of this slab.
+     *
+     * Copies all slot metadata (versions, next links) and alive values.
+     * The new slab has identical structure to the original.
+     *
+     * @return Unique pointer to the cloned slab
+     * @throws std::bad_alloc if allocation fails
+     * @throws Any exception from T's copy constructor
+     *
+     * @note Only available if T is copy constructible
+     */
+    [[nodiscard]]
+    std::unique_ptr<Slab> clone() const
+    requires std::is_copy_constructible_v<T>;
+
     // Non-copyable, non-movable
     Slab(Slab const &) = delete;
     Slab & operator = (Slab const &) = delete;

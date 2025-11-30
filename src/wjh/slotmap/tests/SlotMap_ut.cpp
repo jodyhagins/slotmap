@@ -230,6 +230,340 @@ TEST_CASE("SlotMap: move assignment")
 }
 
 // ============================================================================
+// Swap Tests
+// ============================================================================
+
+TEST_CASE("SlotMap: swap")
+{
+    SUBCASE("swap empty maps") {
+        SlotMap<Key<16, 16, 0, int>> map1;
+        SlotMap<Key<16, 16, 0, int>> map2;
+
+        map1.swap(map2);
+
+        CHECK(map1.is_empty());
+        CHECK(map2.is_empty());
+    }
+
+    SUBCASE("swap with one empty map") {
+        SlotMap<Key<16, 16, 0, int>> map1;
+        SlotMap<Key<16, 16, 0, int>> map2;
+
+        auto key = map1.emplace(42);
+        map1.swap(map2);
+
+        CHECK(map1.is_empty());
+        CHECK(map2.size().value == 1);
+        CHECK(map2.contains(key));
+    }
+
+    SUBCASE("swap with both non-empty") {
+        SlotMap<Key<16, 16, 0, int>> map1;
+        SlotMap<Key<16, 16, 0, int>> map2;
+
+        auto key1 = map1.emplace(42);
+        auto key2 = map2.emplace(100);
+        auto key3 = map2.emplace(200);
+
+        map1.swap(map2);
+
+        CHECK(map1.size().value == 2);
+        CHECK(map2.size().value == 1);
+
+        CHECK(map1.contains(key2));
+        CHECK(map1.contains(key3));
+        CHECK(map2.contains(key1));
+
+        int v1 = 0;
+        map2.use(key1, [&](int const & v) { v1 = v; });
+        CHECK(v1 == 42);
+    }
+
+    SUBCASE("swap with different slab sizes") {
+        SlotMap<Key<16, 16, 0, int>> map1(4u);
+        SlotMap<Key<16, 16, 0, int>> map2(8u);
+
+        for (int i = 0; i < 10; ++i) {
+            map1.emplace(i);
+        }
+        for (int i = 100; i < 105; ++i) {
+            map2.emplace(i);
+        }
+
+        map1.swap(map2);
+
+        CHECK(map1.size().value == 5);
+        CHECK(map2.size().value == 10);
+    }
+
+    SUBCASE("self-swap is safe") {
+        SlotMap<Key<16, 16, 0, int>> map;
+        auto key = map.emplace(42);
+
+        map.swap(map);
+
+        CHECK(map.size().value == 1);
+        CHECK(map.contains(key));
+    }
+}
+
+// ============================================================================
+// Copy Construction Tests
+// ============================================================================
+
+TEST_CASE("SlotMap: copy construction")
+{
+    SUBCASE("copy empty map") {
+        SlotMap<Key<16, 16, 0, int>> original;
+        SlotMap<Key<16, 16, 0, int>> copy(original);
+
+        CHECK(copy.is_empty());
+    }
+
+    SUBCASE("copy single element") {
+        SlotMap<Key<16, 16, 0, int>> original;
+        auto key = original.emplace(42);
+
+        SlotMap<Key<16, 16, 0, int>> copy(original);
+
+        CHECK(copy.size().value == 1);
+        CHECK(copy.contains(key));
+
+        int value = 0;
+        copy.use(key, [&](int const & v) { value = v; });
+        CHECK(value == 42);
+    }
+
+    SUBCASE("copy multiple elements") {
+        SlotMap<Key<16, 16, 0, int>> original;
+        std::vector<Key<16, 16, 0, int>> keys;
+
+        for (int i = 0; i < 100; ++i) {
+            keys.push_back(original.emplace(i * 10));
+        }
+
+        SlotMap<Key<16, 16, 0, int>> copy(original);
+
+        CHECK(copy.size().value == 100);
+
+        for (std::size_t i = 0; i < keys.size(); ++i) {
+            CHECK(copy.contains(keys[i]));
+
+            int value = 0;
+            copy.use(keys[i], [&](int const & v) { value = v; });
+            CHECK(value == static_cast<int>(i * 10));
+        }
+    }
+
+    SUBCASE("copy preserves versions") {
+        SlotMap<Key<16, 16, 0, int>> original(1u);
+
+        // Create and erase to bump versions
+        auto key1 = original.emplace(1);
+        original.erase(key1);
+        auto key2 = original.emplace(2);
+
+        CHECK(key2.version().value > 1);
+
+        SlotMap<Key<16, 16, 0, int>> copy(original);
+
+        CHECK(copy.contains(key2));
+        CHECK(not copy.contains(key1)); // Old key should still be invalid
+    }
+
+    SUBCASE("copy is independent - modifying copy doesn't affect original") {
+        SlotMap<Key<16, 16, 0, int>> original;
+        auto key = original.emplace(42);
+
+        SlotMap<Key<16, 16, 0, int>> copy(original);
+
+        // Modify copy
+        copy.use(key, [](int & v) { v = 100; });
+        auto key2 = copy.emplace(200);
+
+        // Original should be unchanged
+        CHECK(original.size().value == 1);
+        int original_value = 0;
+        original.use(key, [&](int const & v) { original_value = v; });
+        CHECK(original_value == 42);
+        CHECK(not original.contains(key2));
+    }
+
+    SUBCASE("copy is independent - modifying original doesn't affect copy") {
+        SlotMap<Key<16, 16, 0, int>> original;
+        auto key = original.emplace(42);
+
+        SlotMap<Key<16, 16, 0, int>> copy(original);
+
+        // Modify original
+        original.use(key, [](int & v) { v = 100; });
+        auto key2 = original.emplace(200);
+
+        // Copy should be unchanged
+        CHECK(copy.size().value == 1);
+        int copy_value = 0;
+        copy.use(key, [&](int const & v) { copy_value = v; });
+        CHECK(copy_value == 42);
+        CHECK(not copy.contains(key2));
+    }
+
+    SUBCASE("copy with sparse data") {
+        SlotMap<Key<16, 16, 0, int>> original(4u);
+
+        std::vector<Key<16, 16, 0, int>> keys;
+        for (int i = 0; i < 10; ++i) {
+            keys.push_back(original.emplace(i));
+        }
+
+        // Erase every other element to create gaps
+        for (std::size_t i = 0; i < keys.size(); i += 2) {
+            original.erase(keys[i]);
+        }
+
+        SlotMap<Key<16, 16, 0, int>> copy(original);
+
+        CHECK(copy.size().value == 5);
+
+        // Check that correct elements are present
+        for (std::size_t i = 1; i < keys.size(); i += 2) {
+            CHECK(copy.contains(keys[i]));
+
+            int value = 0;
+            copy.use(keys[i], [&](int const & v) { value = v; });
+            CHECK(value == static_cast<int>(i));
+        }
+
+        // Check that erased elements are not present
+        for (std::size_t i = 0; i < keys.size(); i += 2) {
+            CHECK(not copy.contains(keys[i]));
+        }
+    }
+
+    SUBCASE("copy with string values") {
+        SlotMap<Key<16, 16, 0, std::string>> original;
+        auto key1 = original.emplace("hello");
+        auto key2 = original.emplace("world");
+
+        SlotMap<Key<16, 16, 0, std::string>> copy(original);
+
+        CHECK(copy.size().value == 2);
+
+        std::string s1, s2;
+        copy.use(key1, [&](std::string const & s) { s1 = s; });
+        copy.use(key2, [&](std::string const & s) { s2 = s; });
+
+        CHECK(s1 == "hello");
+        CHECK(s2 == "world");
+    }
+}
+
+// ============================================================================
+// Copy Assignment Tests
+// ============================================================================
+
+TEST_CASE("SlotMap: copy assignment")
+{
+    SUBCASE("assign empty to empty") {
+        SlotMap<Key<16, 16, 0, int>> original;
+        SlotMap<Key<16, 16, 0, int>> target;
+
+        target = original;
+
+        CHECK(target.is_empty());
+    }
+
+    SUBCASE("assign non-empty to empty") {
+        SlotMap<Key<16, 16, 0, int>> original;
+        auto key = original.emplace(42);
+
+        SlotMap<Key<16, 16, 0, int>> target;
+        target = original;
+
+        CHECK(target.size().value == 1);
+        CHECK(target.contains(key));
+    }
+
+    SUBCASE("assign empty to non-empty") {
+        SlotMap<Key<16, 16, 0, int>> original;
+        SlotMap<Key<16, 16, 0, int>> target;
+
+        auto key = target.emplace(42);
+
+        target = original;
+
+        CHECK(target.is_empty());
+        CHECK(not target.contains(key));
+    }
+
+    SUBCASE("assign non-empty to non-empty") {
+        SlotMap<Key<16, 16, 0, int>> original;
+        auto key1 = original.emplace(100);
+
+        SlotMap<Key<16, 16, 0, int>> target;
+        // Add more elements to target so it has different structure
+        (void)target.emplace(42);
+        auto key3 = target.emplace(43);
+        auto key4 = target.emplace(44);
+
+        target = original;
+
+        CHECK(target.size().value == 1);
+        CHECK(target.contains(key1));
+
+        // Verify the value is correct
+        int value = 0;
+        target.use(key1, [&](int const & v) { value = v; });
+        CHECK(value == 100);
+
+        // key3 and key4 should be invalid since original only has one element
+        CHECK(not target.contains(key3));
+        CHECK(not target.contains(key4));
+    }
+
+    SUBCASE("self-assignment is safe") {
+        SlotMap<Key<16, 16, 0, int>> map;
+        auto key = map.emplace(42);
+
+        // Use reference to defeat compiler self-assignment warning
+        auto & ref = map;
+        map = ref;
+
+        CHECK(map.size().value == 1);
+        CHECK(map.contains(key));
+    }
+
+    SUBCASE("assignment destroys old values") {
+        static int destructor_count = 0;
+
+        struct Counter
+        {
+            int value = 0;
+            Counter() = default;
+            Counter(Counter const &) = default;
+            Counter & operator = (Counter const &) = default;
+
+            ~Counter() { ++destructor_count; }
+        };
+
+        destructor_count = 0;
+
+        {
+            SlotMap<Key<16, 16, 0, Counter>> original;
+            SlotMap<Key<16, 16, 0, Counter>> target;
+
+            target.emplace();
+            target.emplace();
+
+            CHECK(destructor_count == 0);
+
+            target = original;
+
+            CHECK(destructor_count == 2);
+        }
+    }
+}
+
+// ============================================================================
 // Type Traits
 // ============================================================================
 
@@ -241,12 +575,22 @@ TEST_CASE("SlotMap: type traits")
         static_assert(std::is_default_constructible_v<Map>);
     }
 
-    SUBCASE("is not copy constructible (for now)") {
-        static_assert(not std::is_copy_constructible_v<Map>);
+    SUBCASE("is copy constructible for copyable types") {
+        static_assert(std::is_copy_constructible_v<Map>);
     }
 
-    SUBCASE("is not copy assignable (for now)") {
-        static_assert(not std::is_copy_assignable_v<Map>);
+    SUBCASE("is copy assignable for copyable types") {
+        static_assert(std::is_copy_assignable_v<Map>);
+    }
+
+    SUBCASE("is not copy constructible for non-copyable types") {
+        using NonCopyMap = SlotMap<Key<16, 16, 0, std::unique_ptr<int>>>;
+        static_assert(not std::is_copy_constructible_v<NonCopyMap>);
+    }
+
+    SUBCASE("is not copy assignable for non-copyable types") {
+        using NonCopyMap = SlotMap<Key<16, 16, 0, std::unique_ptr<int>>>;
+        static_assert(not std::is_copy_assignable_v<NonCopyMap>);
     }
 
     SUBCASE("is move constructible") {
@@ -1265,6 +1609,162 @@ TEST_CASE("SlotMap: property-based for_each with sparse map")
         map.for_each([&](auto key, int const & v) { visited[key] = v; });
 
         RC_ASSERT(visited == reference);
+    });
+}
+
+// ============================================================================
+// Property-Based Tests for Copy/Swap
+// ============================================================================
+
+TEST_CASE("SlotMap: property-based swap preserves data")
+{
+    rc::check("swap preserves all data in both maps", []() {
+        SlotMap<Key<16, 15, 1, int>> map1;
+        SlotMap<Key<16, 15, 1, int>> map2;
+
+        std::map<Key<16, 15, 1, int>, int> ref1, ref2;
+
+        auto const count1 = *rc::gen::inRange<std::size_t>(0, 50);
+        auto const count2 = *rc::gen::inRange<std::size_t>(0, 50);
+
+        for (std::size_t i = 0; i < count1; ++i) {
+            auto value = *rc::gen::arbitrary<int>();
+            auto key = map1.emplace(value);
+            ref1[key] = value;
+        }
+
+        for (std::size_t i = 0; i < count2; ++i) {
+            auto value = *rc::gen::arbitrary<int>();
+            auto key = map2.emplace(value);
+            ref2[key] = value;
+        }
+
+        map1.swap(map2);
+
+        // Verify map1 now contains ref2's data
+        RC_ASSERT(map1.size().value == ref2.size());
+        for (auto const & [key, expected] : ref2) {
+            int found = 0;
+            RC_ASSERT(map1.use(key, [&](int const & v) { found = v; }));
+            RC_ASSERT(found == expected);
+        }
+
+        // Verify map2 now contains ref1's data
+        RC_ASSERT(map2.size().value == ref1.size());
+        for (auto const & [key, expected] : ref1) {
+            int found = 0;
+            RC_ASSERT(map2.use(key, [&](int const & v) { found = v; }));
+            RC_ASSERT(found == expected);
+        }
+    });
+}
+
+TEST_CASE("SlotMap: property-based copy creates exact duplicate")
+{
+    rc::check("copy constructor creates exact duplicate", []() {
+        SlotMap<Key<16, 15, 1, int>> original;
+        std::map<Key<16, 15, 1, int>, int> reference;
+
+        auto const count = *rc::gen::inRange<std::size_t>(0, 100);
+
+        for (std::size_t i = 0; i < count; ++i) {
+            auto value = *rc::gen::arbitrary<int>();
+            auto key = original.emplace(value);
+            reference[key] = value;
+        }
+
+        SlotMap<Key<16, 15, 1, int>> copy(original);
+
+        // Verify copy has same size
+        RC_ASSERT(copy.size().value == reference.size());
+
+        // Verify all keys and values are present
+        for (auto const & [key, expected] : reference) {
+            int found = 0;
+            RC_ASSERT(copy.use(key, [&](int const & v) { found = v; }));
+            RC_ASSERT(found == expected);
+        }
+    });
+}
+
+TEST_CASE("SlotMap: property-based copy independence")
+{
+    rc::check("copy is independent from original", []() {
+        SlotMap<Key<16, 15, 1, int>> original;
+        std::map<Key<16, 15, 1, int>, int> original_ref;
+
+        auto const count = *rc::gen::inRange<std::size_t>(1, 50);
+
+        for (std::size_t i = 0; i < count; ++i) {
+            auto value = *rc::gen::arbitrary<int>();
+            auto key = original.emplace(value);
+            original_ref[key] = value;
+        }
+
+        SlotMap<Key<16, 15, 1, int>> copy(original);
+
+        // Modify copy: erase some and add some
+        auto const erase_count = *rc::gen::inRange<std::size_t>(
+            0,
+            original_ref.size());
+        std::vector<Key<16, 15, 1, int>> keys_to_erase;
+        for (auto const & [key, _] : original_ref) {
+            if (keys_to_erase.size() < erase_count) {
+                keys_to_erase.push_back(key);
+            }
+        }
+        for (auto key : keys_to_erase) {
+            copy.erase(key);
+        }
+
+        auto const add_count = *rc::gen::inRange<std::size_t>(0, 20);
+        for (std::size_t i = 0; i < add_count; ++i) {
+            copy.emplace(*rc::gen::arbitrary<int>());
+        }
+
+        // Original should be unchanged
+        RC_ASSERT(original.size().value == original_ref.size());
+        for (auto const & [key, expected] : original_ref) {
+            int found = 0;
+            RC_ASSERT(original.use(key, [&](int const & v) { found = v; }));
+            RC_ASSERT(found == expected);
+        }
+    });
+}
+
+TEST_CASE("SlotMap: property-based copy assignment")
+{
+    rc::check("copy assignment replaces contents", []() {
+        SlotMap<Key<16, 15, 1, int>> source;
+        SlotMap<Key<16, 15, 1, int>> target;
+
+        std::map<Key<16, 15, 1, int>, int> source_ref;
+
+        auto const source_count = *rc::gen::inRange<std::size_t>(0, 50);
+        auto const target_count = *rc::gen::inRange<std::size_t>(0, 50);
+
+        for (std::size_t i = 0; i < source_count; ++i) {
+            auto value = *rc::gen::arbitrary<int>();
+            auto key = source.emplace(value);
+            source_ref[key] = value;
+        }
+
+        for (std::size_t i = 0; i < target_count; ++i) {
+            target.emplace(*rc::gen::arbitrary<int>());
+        }
+
+        target = source;
+
+        // Verify target now matches source
+        RC_ASSERT(target.size().value == source_ref.size());
+        for (auto const & [key, expected] : source_ref) {
+            int found = 0;
+            RC_ASSERT(target.use(key, [&](int const & v) { found = v; }));
+            RC_ASSERT(found == expected);
+        }
+
+        // Source should be unchanged
+        RC_ASSERT(source.size().value == source_ref.size());
     });
 }
 
