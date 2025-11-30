@@ -40,6 +40,7 @@ add_slotmap_test(
     NAME "SlotMap Slot Tests"
     SOURCES
         Slot_ut.cpp
+        Slot_debug_ut.cpp
 )
 
 add_slotmap_test(

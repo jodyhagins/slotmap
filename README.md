@@ -179,6 +179,15 @@ cmake --build .
 ctest -jN --output-on-failure
 ```
 
+### Debug Mode
+
+The library includes debug-mode assertions that help catch misuse during development:
+
+- **Debug builds** (`CMAKE_BUILD_TYPE=Debug`): Automatically enables `WJH_SLOTMAP_DEBUG_MODE`, which adds runtime checks in the internal `Slot` class to detect accessing free slots or double-free bugs.
+- **Release builds** (`CMAKE_BUILD_TYPE=Release`): Debug mode is disabled for zero overhead.
+
+The debug checks are only active when there's spare room in the version storage bytes. You can manually override this by defining or undefining `WJH_SLOTMAP_DEBUG_MODE` before including the library headers.
+
 ## API Overview
 
 ### Construction

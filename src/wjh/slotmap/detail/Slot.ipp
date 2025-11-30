@@ -18,12 +18,25 @@ Slot(index_type next)
     set_next(next);
 }
 
+template <typename VersionT>
+constexpr bool
+has_alive_bit()
+{
+#ifdef WJH_SLOTMAP_DEBUG_MODE
+    constexpr auto version_digits =
+        std::numeric_limits<typename VersionT::value_type>::digits;
+    return VersionT::num_bits < version_digits;
+#else
+    return false;
+#endif
+}
+
 template <typename T, typename IndexT, typename VersionT>
 constexpr Slot<T, IndexT, VersionT>::version_type
 Slot<T, IndexT, VersionT>::
 version() const noexcept
 {
-    if constexpr (version_type::num_bits < version_digits) {
+    if constexpr (has_alive_bit<version_type>()) {
         return version_type(naked_version_type(
             std::bit_cast<naked_version_type>(version_bytes_) & ~alive_bit));
     } else {
@@ -36,7 +49,7 @@ constexpr void
 Slot<T, IndexT, VersionT>::
 set_version(version_type v) noexcept
 {
-    if constexpr (version_type::num_bits < version_digits) {
+    if constexpr (has_alive_bit<version_type>()) {
         assert(not (v.value & alive_bit));
         auto const ver = std::bit_cast<naked_version_type>(version_bytes_);
         version_bytes_ = std::bit_cast<decltype(version_bytes_)>(
@@ -129,7 +142,7 @@ constexpr void
 Slot<T, IndexT, VersionT>::
 set_free()
 {
-    if constexpr (version_type::num_bits < version_digits) {
+    if constexpr (has_alive_bit<version_type>()) {
         auto version = std::bit_cast<naked_version_type>(version_bytes_);
         version &= ~alive_bit;
         version_bytes_ = std::bit_cast<decltype(version_bytes_)>(version);
@@ -141,7 +154,7 @@ constexpr bool
 Slot<T, IndexT, VersionT>::
 is_free() const
 {
-    if constexpr (version_type::num_bits < version_digits) {
+    if constexpr (has_alive_bit<version_type>()) {
         auto version = std::bit_cast<naked_version_type>(version_bytes_);
         return not (version & alive_bit);
     }
@@ -153,7 +166,7 @@ constexpr void
 Slot<T, IndexT, VersionT>::
 set_alive()
 {
-    if constexpr (version_type::num_bits < version_digits) {
+    if constexpr (has_alive_bit<version_type>()) {
         auto version = std::bit_cast<naked_version_type>(version_bytes_);
         version |= alive_bit;
         version_bytes_ = std::bit_cast<decltype(version_bytes_)>(version);
@@ -165,7 +178,7 @@ constexpr bool
 Slot<T, IndexT, VersionT>::
 is_alive() const
 {
-    if constexpr (version_type::num_bits < version_digits) {
+    if constexpr (has_alive_bit<version_type>()) {
         auto version = std::bit_cast<naked_version_type>(version_bytes_);
         return version & alive_bit;
     }

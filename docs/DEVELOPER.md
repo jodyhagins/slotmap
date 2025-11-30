@@ -277,6 +277,67 @@ constexpr version_type version() const noexcept {
 
 I wanted to have some ability to inject debugging checks, without increasing the size of the slot. We only get this information and checking when there is room, but that is fine since we can devise tests to leave at least one bit free in the version field.
 
+### Debug Mode Alive Bit Tracking
+
+The alive bit tracking is controlled by the `WJH_SLOTMAP_DEBUG_MODE` preprocessor macro. CMake automatically defines this macro for Debug builds using a generator expression in `src/wjh/slotmap/CMakeLists.txt`:
+
+```cmake
+target_compile_definitions(wjh_slotmap
+        INTERFACE
+        $<$<CONFIG:Debug>:WJH_SLOTMAP_DEBUG_MODE>)
+```
+
+This approach works correctly with both single-config generators (Make, Ninja) and multi-config generators (Xcode, Visual Studio).
+
+**Conditional Compilation:**
+
+The alive bit tracking is only enabled when BOTH conditions are true:
+1. `WJH_SLOTMAP_DEBUG_MODE` is defined (automatically in Debug builds)
+2. There's room in the version bytes: `version_type::num_bits < version_digits`
+
+```cpp
+// In Debug mode (when conditions above are met):
+constexpr bool is_free() const noexcept {
+    return not (std::bit_cast<naked_version_type>(version_bytes_) & alive_bit);
+}
+
+// In Release mode (or when no room in version bytes):
+constexpr bool is_free() const noexcept {
+    return true;  // No checking - assume correct usage
+}
+```
+
+**Assertions Enabled by Debug Mode:**
+
+When debug mode is active, the following operations include meaningful assertions:
+
+- `next()`: Asserts that the slot is free before accessing the next-pointer
+- `set_next()`: Asserts that the slot is free before setting the next-pointer
+- `emplace()`: Asserts that the slot is free before constructing a value
+- `destroy()`: Asserts that the slot is alive before destroying a value
+- `value()`: Asserts that the slot is alive before accessing the value
+
+**Zero-Cost Abstraction:**
+
+In Release builds, all the debug checks compile away:
+- `is_free()` and `is_alive()` always return `true`
+- The conditionals are resolved at compile time via `if constexpr`
+- No runtime overhead - the generated code is identical to having no checks
+
+**Manual Override:**
+
+Users can manually control debug mode by defining or undefining `WJH_SLOTMAP_DEBUG_MODE` before including the library:
+
+```cpp
+// Force debug mode even in Release build
+#define WJH_SLOTMAP_DEBUG_MODE
+#include <wjh/slotmap/SlotMap.hpp>
+
+// Or force it off in Debug build
+#undef WJH_SLOTMAP_DEBUG_MODE
+#include <wjh/slotmap/SlotMap.hpp>
+```
+
 ### std::launder Usage
 
 When accessing the stored `T` or `IndexT` through the byte array, we use `std::launder`:
