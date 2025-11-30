@@ -193,8 +193,8 @@ protected:
 
 This enables two key types:
 
-- `Key<I, V, U, T>`: Default-constructed keys have zero-initialized bits
-- `TrivialKey<I, V, U, T>` (alias for `Key<I, V, U, Trivial<T>>`): Default-constructed keys have uninitialized bits (faster in performance-critical code)
+- `Key<T, I, V, U>`: Default-constructed keys have zero-initialized bits
+- `TrivialKey<T, I, V, U>` (alias for `Key<Trivial<T>, I, V, U>`): Default-constructed keys have uninitialized bits (faster in performance-critical code)
 
 The `tag_type` is extracted from the base, and since the specialization wraps `Trivial<TagTypeT>`, it unwraps to just `TagTypeT` for API purposes.
 
@@ -1149,7 +1149,7 @@ Use `SUBCASE` for scenario variants:
 
 ```cpp
 TEST_CASE("SlotMap emplace") {
-    SlotMap<Key<16, 16, 0, int>> map;
+    SlotMap<Key<int, 16, 16>> map;
 
     SUBCASE("returns valid key") {
         auto key = map.emplace(42);
@@ -1170,8 +1170,8 @@ Use `rc::check()` for invariant verification:
 
 ```cpp
 rc::check("insert-find roundtrip", [](std::vector<int> const & values) {
-    SlotMap<Key<16, 16, 0, int>> map;
-    std::vector<Key<16, 16, 0, int>> keys;
+    SlotMap<Key<int, 16, 16>> map;
+    std::vector<Key<int, 16, 16>> keys;
 
     for (auto v : values) {
         keys.push_back(map.emplace(v));
@@ -1191,7 +1191,7 @@ rc::check("insert-find roundtrip", [](std::vector<int> const & values) {
 
 Critical edge cases to test:
 
-1. **1-bit fields**: `Key<1, 1, 0, T>` (minimum possible configuration)
+1. **1-bit fields**: `Key<T, 1, 1>` (minimum possible configuration)
 2. **Maximum capacity**: Fill entire index space, verify null key returned
 3. **Version exhaustion**: Emplace/erase until slot is dead, verify recycling
 4. **Single-slot slabs**: `SlotMap(size_type{1})` (edge case for iteration)
@@ -1217,7 +1217,7 @@ struct ThrowOnCopy {
 };
 
 TEST_CASE("SlotMap copy constructor exception safety") {
-    SlotMap<Key<8, 8, 0, ThrowOnCopy>> map;
+    SlotMap<Key<ThrowOnCopy, 8, 8>> map;
     map.emplace(1);
     map.emplace(2);
 
@@ -1511,7 +1511,7 @@ free_list_head_ = 0
 ### Key Bit Layout (32-bit example)
 
 ```
-Key<20, 10, 2, int> (20 index bits, 10 version bits, 2 user bits)
+Key<int, 20, 10, 2> (20 index bits, 10 version bits, 2 user bits)
 
 Bit layout:
 31 30│29 ... 20│19 ... 0

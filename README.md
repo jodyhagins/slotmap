@@ -32,7 +32,7 @@ struct Player {
 };
 
 // Define a key type: 16 index bits, 16 version bits, 0 user bits
-using PlayerKey = wjh::SlotMapKey<16, 16, 0, Player>;
+using PlayerKey = wjh::SlotMapKey<Player, 16, 16>;
 wjh::SlotMap<PlayerKey> players;
 
 // Insert - container generates the key
@@ -110,10 +110,10 @@ Choose 32-bit, 64-bit, or 128-bit keys (128-bit requires compiler support for `_
 
 ```cpp
 // 32-bit key: 20 index + 12 version = 1M capacity, 4K generations
-using SmallKey = wjh::SlotMapKey<20, 12, 0, MyType>;
+using SmallKey = wjh::SlotMapKey<MyType, 20, 12>;
 
 // 64-bit key: 32 index + 32 version = 4B capacity, 4B generations
-using LargeKey = wjh::SlotMapKey<32, 32, 0, MyType>;
+using LargeKey = wjh::SlotMapKey<MyType, 32, 32>;
 ```
 
 **5. Slab-based allocation**
@@ -290,10 +290,10 @@ The `Key` template takes four parameters:
 
 ```cpp
 template <
+    typename T,           // Type of mapped value
     unsigned IndexBits,   // Number of bits for index (must be > 0)
     unsigned VersionBits, // Number of bits for version (must be > 0)
-    unsigned UserBits,    // Number of bits for user data (can be 0)
-    typename T = void     // Phantom type for type safety
+    unsigned UserBits = 0 // Number of bits for user data (can be 0)
 >
 class Key;
 ```
@@ -304,19 +304,19 @@ Total bits must equal 32, 64, or 128.
 
 ```cpp
 // 32-bit key: 16-bit index, 16-bit version
-using Key32 = wjh::SlotMapKey<16, 16, 0, MyType>;
+using Key32 = wjh::SlotMapKey<MyType, 16, 16>;
 // Capacity: 65,536 slots
 // Lifetime: 65,536 × 65,536 - 1 = 4,294,967,295 insertions
 
 // 64-bit key with user bits
-using Key64 = wjh::SlotMapKey<24, 32, 8, MyType>;
+using Key64 = wjh::SlotMapKey<MyType, 24, 32, 8>;
 // Capacity: 16,777,216 slots
 // 8 bits available for user-defined data
 // Access user bits: key.user()
 // Create key with user bits: key.with_user(UserType{42})
 
 // 128-bit key (requires __uint128_t)
-using Key128 = wjh::SlotMapKey<64, 64, 0, MyType>;
+using Key128 = wjh::SlotMapKey<MyType, 64, 64>;
 // Capacity: 18,446,744,073,709,551,616 slots
 ```
 
@@ -325,7 +325,7 @@ using Key128 = wjh::SlotMapKey<64, 64, 0, MyType>;
 User bits allow storing additional metadata in the key itself:
 
 ```cpp
-using MyKey = wjh::SlotMapKey<20, 8, 4, Entity>;
+using MyKey = wjh::SlotMapKey<Entity, 20, 8, 4>;
 auto key = entities.emplace(/*...*/);
 
 // Set user bits (creates new key with same index/version)

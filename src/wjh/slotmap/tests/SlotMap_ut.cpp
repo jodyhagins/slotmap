@@ -49,7 +49,7 @@ TEST_CASE("SlotMap: slab recycling")
 {
     // Use 32-bit key with 1-bit version (31 index bits) to force quick version
     // exhaustion. Valid key sizes are 32, 64, 128.
-    using TestKey = Key<31, 1, 0, int>;
+    using TestKey = Key<int, 31, 1>;
     using TestMap = SlotMap<TestKey>;
 
     SUBCASE("dead slots are not added to free list") {
@@ -111,7 +111,7 @@ TEST_CASE("SlotMap: slab recycling")
 
     SUBCASE("version exhausted key becomes invalid") {
         // Use a key type with more version bits so we can test reuse
-        using Key2Bit = Key<30, 2, 0, int>;
+        using Key2Bit = Key<int, 30, 2>;
         using Map2Bit = SlotMap<Key2Bit>;
         Map2Bit map(4u);
 
@@ -155,7 +155,7 @@ TEST_CASE("SlotMap: slab recycling")
 
 TEST_CASE("SlotMap: type traits")
 {
-    using Map = SlotMap<Key<16, 16, 0, int>>;
+    using Map = SlotMap<Key<int, 16, 16>>;
 
     SUBCASE("is default constructible") {
         static_assert(std::is_default_constructible_v<Map>);
@@ -170,12 +170,12 @@ TEST_CASE("SlotMap: type traits")
     }
 
     SUBCASE("is not copy constructible for non-copyable types") {
-        using NonCopyMap = SlotMap<Key<16, 16, 0, std::unique_ptr<int>>>;
+        using NonCopyMap = SlotMap<Key<std::unique_ptr<int>, 16, 16>>;
         static_assert(not std::is_copy_constructible_v<NonCopyMap>);
     }
 
     SUBCASE("is not copy assignable for non-copyable types") {
-        using NonCopyMap = SlotMap<Key<16, 16, 0, std::unique_ptr<int>>>;
+        using NonCopyMap = SlotMap<Key<std::unique_ptr<int>, 16, 16>>;
         static_assert(not std::is_copy_assignable_v<NonCopyMap>);
     }
 
@@ -214,7 +214,7 @@ TEST_CASE("SlotMap: property-based slab size validation")
 
         bool threw = false;
         try {
-            SlotMap<Key<16, 16, 0, int>> map(size_hint);
+            SlotMap<Key<int, 16, 16>> map(size_hint);
         } catch (std::invalid_argument const &) {
             threw = true;
         }
@@ -231,7 +231,7 @@ TEST_CASE("SlotMap: property-based power-of-2 acceptance")
 
         bool threw = false;
         try {
-            SlotMap<Key<16, 16, 0, int>> map(size);
+            SlotMap<Key<int, 16, 16>> map(size);
         } catch (...) {
             threw = true;
         }
@@ -247,7 +247,7 @@ TEST_CASE("SlotMap: property-based power-of-2 acceptance")
 TEST_CASE("SlotMap: wjh namespace alias")
 {
     // wjh::SlotMap should work
-    wjh::SlotMap<wjh::SlotMapKey<16, 16, 0, int>> map;
+    wjh::SlotMap<wjh::SlotMapKey<int, 16, 16>> map;
 
     CHECK(map.is_empty());
     CHECK(map.size() == std::uint16_t(0));
@@ -259,7 +259,7 @@ TEST_CASE("SlotMap: wjh namespace alias")
 
 TEST_CASE("SlotMap: emplace returns valid key")
 {
-    SlotMap<Key<16, 16, 0, int>> map;
+    SlotMap<Key<int, 16, 16>> map;
 
     SUBCASE("single emplace") {
         auto key = map.emplace(42);
@@ -271,7 +271,7 @@ TEST_CASE("SlotMap: emplace returns valid key")
     }
 
     SUBCASE("emplace with various types") {
-        SlotMap<Key<16, 16, 0, std::string>> str_map;
+        SlotMap<Key<std::string, 16, 16>> str_map;
         auto key = str_map.emplace("hello");
 
         CHECK(not key.is_null());
@@ -279,7 +279,7 @@ TEST_CASE("SlotMap: emplace returns valid key")
     }
 
     SUBCASE("emplace with move-only type") {
-        SlotMap<Key<16, 16, 0, std::unique_ptr<int>>> ptr_map;
+        SlotMap<Key<std::unique_ptr<int>, 16, 16>> ptr_map;
         auto key = ptr_map.emplace(std::make_unique<int>(42));
 
         CHECK(not key.is_null());
@@ -289,7 +289,7 @@ TEST_CASE("SlotMap: emplace returns valid key")
 
 TEST_CASE("SlotMap: emplace constructs value correctly")
 {
-    SlotMap<Key<16, 16, 0, int>> map;
+    SlotMap<Key<int, 16, 16>> map;
 
     auto key = map.emplace(42);
     bool found = false;
@@ -302,7 +302,7 @@ TEST_CASE("SlotMap: emplace constructs value correctly")
 
 TEST_CASE("SlotMap: emplace never returns version 0 at index 0")
 {
-    SlotMap<Key<16, 16, 0, int>> map(4u);
+    SlotMap<Key<int, 16, 16>> map(4u);
 
     // First emplace should get index 0 but version >= 1
     auto key = map.emplace(1);
@@ -312,8 +312,8 @@ TEST_CASE("SlotMap: emplace never returns version 0 at index 0")
 
 TEST_CASE("SlotMap: multiple emplaces")
 {
-    SlotMap<Key<16, 16, 0, int>> map;
-    std::vector<Key<16, 16, 0, int>> keys;
+    SlotMap<Key<int, 16, 16>> map;
+    std::vector<Key<int, 16, 16>> keys;
 
     for (int i = 0; i < 100; ++i) {
         auto key = map.emplace(i);
@@ -338,7 +338,7 @@ TEST_CASE("SlotMap: multiple emplaces")
 
 TEST_CASE("SlotMap: erase removes element")
 {
-    SlotMap<Key<16, 16, 0, int>> map;
+    SlotMap<Key<int, 16, 16>> map;
 
     auto key = map.emplace(42);
     CHECK(map.erase(key));
@@ -349,7 +349,7 @@ TEST_CASE("SlotMap: erase removes element")
 
 TEST_CASE("SlotMap: erase returns false for invalid key")
 {
-    SlotMap<Key<16, 16, 0, int>> map;
+    SlotMap<Key<int, 16, 16>> map;
 
     auto key = map.emplace(42);
     map.erase(key);
@@ -360,14 +360,14 @@ TEST_CASE("SlotMap: erase returns false for invalid key")
 
 TEST_CASE("SlotMap: erase returns false for null key")
 {
-    SlotMap<Key<16, 16, 0, int>> map;
+    SlotMap<Key<int, 16, 16>> map;
 
-    CHECK(not map.erase(Key<16, 16, 0, int>::null()));
+    CHECK(not map.erase(Key<int, 16, 16>::null()));
 }
 
 TEST_CASE("SlotMap: key version increments after erase and re-emplace")
 {
-    SlotMap<Key<16, 16, 0, int>> map(1u); // Single slot slab
+    SlotMap<Key<int, 16, 16>> map(1u); // Single slot slab
 
     auto key1 = map.emplace(1);
     auto v1 = key1.version();
@@ -396,7 +396,7 @@ TEST_CASE("SlotMap: destructor is called on erase")
     destructor_count = 0;
 
     {
-        SlotMap<Key<16, 16, 0, Counter>> map;
+        SlotMap<Key<Counter, 16, 16>> map;
         auto key = map.emplace();
         CHECK(destructor_count == 0);
         map.erase(key);
@@ -411,8 +411,8 @@ TEST_CASE("SlotMap: destructor is called on erase")
 
 TEST_CASE("SlotMap: null key handling")
 {
-    SlotMap<Key<16, 16, 0, int>> map;
-    auto null_key = Key<16, 16, 0, int>::null();
+    SlotMap<Key<int, 16, 16>> map;
+    auto null_key = Key<int, 16, 16>::null();
 
     SUBCASE("contains returns false for null key") {
         CHECK(not map.contains(null_key));
@@ -435,7 +435,7 @@ TEST_CASE("SlotMap: null key handling")
 
 TEST_CASE("SlotMap: use invokes callable with value")
 {
-    SlotMap<Key<16, 16, 0, int>> map;
+    SlotMap<Key<int, 16, 16>> map;
     auto key = map.emplace(42);
 
     SUBCASE("non-const use") {
@@ -464,7 +464,7 @@ TEST_CASE("SlotMap: use invokes callable with value")
 
 TEST_CASE("SlotMap: use returns false for stale key")
 {
-    SlotMap<Key<16, 16, 0, int>> map(1u);
+    SlotMap<Key<int, 16, 16>> map(1u);
 
     auto key1 = map.emplace(1);
     map.erase(key1);
@@ -481,7 +481,7 @@ TEST_CASE("SlotMap: use returns false for stale key")
 
 TEST_CASE("SlotMap: contains")
 {
-    SlotMap<Key<16, 16, 0, int>> map;
+    SlotMap<Key<int, 16, 16>> map;
 
     SUBCASE("returns true for valid key") {
         auto key = map.emplace(42);
@@ -495,7 +495,7 @@ TEST_CASE("SlotMap: contains")
     }
 
     SUBCASE("returns false for stale version") {
-        SlotMap<Key<16, 16, 0, int>> small_map(1u);
+        SlotMap<Key<int, 16, 16>> small_map(1u);
         auto key1 = small_map.emplace(1);
         small_map.erase(key1);
         auto key2 = small_map.emplace(2);
@@ -512,9 +512,9 @@ TEST_CASE("SlotMap: contains")
 TEST_CASE("SlotMap: capacity exhaustion returns null key")
 {
     // Small index space: 8 bits = 256 usable indices (Key<8, 24, 0> = 32 bits)
-    SlotMap<Key<8, 24, 0, int>> map(64u);
+    SlotMap<Key<int, 8, 24>> map(64u);
 
-    using key_type = Key<8, 24, 0, int>;
+    using key_type = Key<int, 8, 24>;
     std::vector<key_type> keys;
     for (int i = 0; i < 256; ++i) {
         auto key = map.emplace(i);
@@ -533,9 +533,9 @@ TEST_CASE("SlotMap: capacity exhaustion returns null key")
 TEST_CASE("SlotMap: can reuse slots after erase")
 {
     // 8-bit index space = 256 slots
-    SlotMap<Key<8, 24, 0, int>> map(64u);
+    SlotMap<Key<int, 8, 24>> map(64u);
 
-    using key_type = Key<8, 24, 0, int>;
+    using key_type = Key<int, 8, 24>;
 
     // Fill up
     std::vector<key_type> keys;
@@ -568,7 +568,7 @@ TEST_CASE("SlotMap: slot becomes dead after version exhaustion")
     // 2-bit version: versions 1, 2, 3; max_version = 3
     // After version 3 is used, slot is dead
     // Key<30, 2, 0> = 32 bits total
-    SlotMap<Key<30, 2, 0, int>> map(4u);
+    SlotMap<Key<int, 30, 2>> map(4u);
 
     auto key1 = map.emplace(1); // version 1 (first slot of first slab)
     auto idx1 = key1.index();
@@ -596,7 +596,7 @@ TEST_CASE("SlotMap: slot becomes dead after version exhaustion")
 
 TEST_CASE("SlotMap: move preserves data")
 {
-    SlotMap<Key<16, 16, 0, int>> map;
+    SlotMap<Key<int, 16, 16>> map;
     auto key1 = map.emplace(42);
     auto key2 = map.emplace(100);
 
@@ -615,7 +615,7 @@ TEST_CASE("SlotMap: move preserves data")
     }
 
     SUBCASE("move assignment") {
-        SlotMap<Key<16, 16, 0, int>> other;
+        SlotMap<Key<int, 16, 16>> other;
         other = std::move(map);
 
         CHECK(other.size().value == 2);
@@ -631,7 +631,7 @@ TEST_CASE("SlotMap: move preserves data")
 TEST_CASE("SlotMap: property-based emplace/use roundtrip")
 {
     rc::check("emplace then use returns same value", []() {
-        SlotMap<Key<16, 15, 1, int>> map;
+        SlotMap<Key<int, 16, 15, 1>> map;
         auto const value = *rc::gen::arbitrary<int>();
 
         auto key = map.emplace(value);
@@ -647,12 +647,12 @@ TEST_CASE("SlotMap: property-based emplace/use roundtrip")
 TEST_CASE("SlotMap: property-based multiple values")
 {
     rc::check("multiple emplaces all accessible", []() {
-        SlotMap<Key<16, 15, 1, int>> map;
+        SlotMap<Key<int, 16, 15, 1>> map;
         auto const values = *rc::gen::container<std::vector<int>>(
             100,
             rc::gen::arbitrary<int>());
 
-        std::vector<Key<16, 15, 1, int>> keys;
+        std::vector<Key<int, 16, 15, 1>> keys;
         for (auto v : values) {
             keys.push_back(map.emplace(v));
         }
@@ -670,10 +670,10 @@ TEST_CASE("SlotMap: property-based multiple values")
 TEST_CASE("SlotMap: property-based erase invalidates key")
 {
     rc::check("erased keys are no longer valid", []() {
-        SlotMap<Key<16, 15, 1, int>> map;
+        SlotMap<Key<int, 16, 15, 1>> map;
 
         auto const count = *rc::gen::inRange<std::size_t>(1, 50);
-        std::vector<Key<16, 15, 1, int>> keys;
+        std::vector<Key<int, 16, 15, 1>> keys;
         for (std::size_t i = 0; i < count; ++i) {
             keys.push_back(map.emplace(static_cast<int>(i)));
         }
@@ -696,8 +696,8 @@ TEST_CASE("SlotMap: property-based erase invalidates key")
 TEST_CASE("SlotMap: property-based interleaved operations")
 {
     rc::check("interleaved emplace/erase maintains consistency", []() {
-        SlotMap<Key<16, 15, 1, int>> map;
-        std::map<Key<16, 15, 1, int>, int> reference;
+        SlotMap<Key<int, 16, 15, 1>> map;
+        std::map<Key<int, 16, 15, 1>, int> reference;
 
         auto const ops = *rc::gen::inRange<std::size_t>(10, 100);
 

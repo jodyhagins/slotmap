@@ -19,6 +19,10 @@ namespace wjh::slotmap {
 /**
  * A type-safe, bit-packed key with compile-time validation
  *
+ * @tparam T  The type of the mapped item that this key will be used for. For
+ * the purpose of @p Key, this is a phantom type for type, because it is not
+ * used.
+ *
  * @tparam IndexBits  Number of bits allocated for the index field. Must be
  * greater than 0.
  *
@@ -26,9 +30,7 @@ namespace wjh::slotmap {
  * greater than 0.
  *
  * @tparam UserBits  Number of bits allocated for user-defined data. If 0, there
- * are no user controlled bits.
- *
- * @tparam T  Phantom type for type safety, and triviality distinction.
+ * are no user controlled bits. Defaults to 0.
  *
  * The sum of IndexBits + VersionBits + UserBits must equal 32, 64, or 128.
  * 128-bit keys are only supported on platforms with __uint128_t.
@@ -36,10 +38,10 @@ namespace wjh::slotmap {
  * Bit layout: [user][version][index] from MSB to LSB.
  */
 template <
+    typename T,
     unsigned IndexBits,
     unsigned VersionBits,
-    unsigned UserBits,
-    typename T = void>
+    unsigned UserBits = 0>
 class Key
 : private detail::
       KeyBase<detail::storage_type_t<IndexBits + VersionBits + UserBits>, T>
@@ -251,8 +253,8 @@ struct is_key
 : std::false_type
 { };
 
-template <unsigned I, unsigned V, unsigned U, typename T>
-struct is_key<Key<I, V, U, T>>
+template <typename T, unsigned I, unsigned V, unsigned U>
+struct is_key<Key<T, I, V, U>>
 : std::true_type
 { };
 
@@ -260,43 +262,43 @@ template <typename T>
 inline constexpr bool is_key_v = is_key<T>::value;
 
 /**
- * The same as Key<IndexBits, VersionBits, UserBits, T>, except the Key class
+ * The same as Key<T, IndexBits, VersionBits, UserBits>, except the Key class
  * will be trivially default constructible.
  */
 template <
+    typename T,
     unsigned IndexBits,
     unsigned VersionBits,
-    unsigned UserBits,
-    typename T = void>
+    unsigned UserBits = 0>
 using TrivialKey =
-    slotmap::Key<IndexBits, VersionBits, UserBits, detail::Trivial<T>>;
+    slotmap::Key<detail::Trivial<T>, IndexBits, VersionBits, UserBits>;
 
 } // namespace wjh::slotmap
 
 namespace wjh {
 
 template <
+    typename T,
     unsigned IndexBits,
     unsigned VersionBits,
-    unsigned UserBits,
-    typename T = void>
-using SlotMapKey = slotmap::Key<IndexBits, VersionBits, UserBits, T>;
+    unsigned UserBits = 0>
+using SlotMapKey = slotmap::Key<T, IndexBits, VersionBits, UserBits>;
 
 template <
+    typename T,
     unsigned IndexBits,
     unsigned VersionBits,
-    unsigned UserBits,
-    typename T = void>
+    unsigned UserBits = 0>
 using TrivialSlotMapKey =
-    slotmap::TrivialKey<IndexBits, VersionBits, UserBits, T>;
+    slotmap::TrivialKey<T, IndexBits, VersionBits, UserBits>;
 
 } // namespace wjh
 
 /**
  * Specialization of std::hash for wjh::slotmap::Key.
  */
-template <unsigned I, unsigned V, unsigned U, typename T>
-struct std::hash<wjh::slotmap::Key<I, V, U, T>>
+template <typename T, unsigned I, unsigned V, unsigned U>
+struct std::hash<wjh::slotmap::Key<T, I, V, U>>
 {
     /**
      * Return a hash of the key.
@@ -306,7 +308,7 @@ struct std::hash<wjh::slotmap::Key<I, V, U, T>>
      */
     [[nodiscard]]
     std::size_t
-    operator () (wjh::slotmap::Key<I, V, U, T> const & key) const noexcept;
+    operator () (wjh::slotmap::Key<T, I, V, U> const & key) const noexcept;
 };
 
 #include "Key.ipp"
