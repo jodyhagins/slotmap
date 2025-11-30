@@ -1070,12 +1070,12 @@ RC_GTEST_PROP(SlotMap, insert_find_roundtrip, ()) {
 
 ## 🚀 RESUME HERE - Next Agent Instructions
 
-**Status:** Phase 3 is complete. Begin Phase 4.
+**Status:** Phase 4 is complete. Begin Phase 5.
 
 **What's done:**
 - `src/wjh/slotmap/detail/Slot.hpp` / `Slot.ipp` - Complete with tests
 - `src/wjh/slotmap/detail/Slab.hpp` / `Slab.ipp` - Complete with tests (includes alive bitmap, emplace, destroy)
-- `src/wjh/slotmap/SlotMap.hpp` / `SlotMap.ipp` - Core operations complete with tests
+- `src/wjh/slotmap/SlotMap.hpp` / `SlotMap.ipp` - Core operations + iteration/bulk ops complete with tests
 - Tests pass: `ctest --output-on-failure --test-dir build`
 
 **Key design decisions to understand:**
@@ -1094,19 +1094,23 @@ RC_GTEST_PROP(SlotMap, insert_find_roundtrip, ()) {
 
 7. **Null key handling**: No explicit null key checks. Null keys (version=0, index=0) fail validation naturally because slot 0 has version ≥1. This is simpler and consistent.
 
-8. **DRY pattern for const/non-const**: Non-const `get_slab()` and `use()` delegate to const versions with `const_cast`. Eliminates code duplication.
+8. **DRY pattern for const/non-const**: Non-const `get_slab()`, `use()`, and `for_each()` delegate to const versions with `const_cast`. Eliminates code duplication.
 
 9. **`contains()` uses `use()`**: Implemented as `use(key, [](auto const&){})` - simple one-liner reusing existing validation.
 
+10. **`for_each()` builds keys**: During iteration, keys are reconstructed from index + version. The user_type is set to default (0).
+
+11. **`clear()` vs `reset()`**: `clear()` retains memory and increments versions (invalidating keys); `reset()` deallocates everything and returns to initial state.
+
 **Next steps:**
 1. Read this DESIGN.md thoroughly
-2. Begin Phase 4: Implement `for_each()`, `clear()`, `reset()`
+2. Begin Phase 5: Implement copy operations and `swap()`
 3. Follow the coding standards in CLAUDE.md
 4. Build: `cmake --build build`
 5. Test: `ctest --output-on-failure --test-dir build`
 
 **Files to modify:**
-- `src/wjh/slotmap/SlotMap.hpp` - Add method declarations
+- `src/wjh/slotmap/SlotMap.hpp` - Add/update copy constructor, copy assignment, swap declarations
 - `src/wjh/slotmap/SlotMap.ipp` - Add implementations
 - `src/wjh/slotmap/tests/SlotMap_ut.cpp` - Add tests
 
@@ -1150,26 +1154,33 @@ RC_GTEST_PROP(SlotMap, insert_find_roundtrip, ()) {
 - Non-const methods delegate to const versions to eliminate duplication
 - Comprehensive property-based tests verify interleaved emplace/erase consistency
 
-### Phase 4: Iteration and Bulk Operations
+### Phase 4: Iteration and Bulk Operations ✅ COMPLETED
 
-- [ ] Implement `for_each()`
-  - [ ] Iterate over slabs
-  - [ ] Skip nullptr slabs
-  - [ ] Use `Slab::is_alive()` to find alive slots
-  - [ ] Build key from index + version for callback
-  - [ ] Early exit support with `break_t`
+- [x] Implement `for_each()`
+  - [x] Iterate over slabs
+  - [x] Skip nullptr slabs
+  - [x] Use `Slab::is_alive()` to find alive slots
+  - [x] Build key from index + version for callback
+  - [x] Early exit support with `break_t`
 
-- [ ] Implement `clear()`
-  - [ ] Iterate and destroy all alive values (use bitmap)
-  - [ ] Increment all versions
-  - [ ] Rebuild free list
-  - [ ] Reset size to 0
+- [x] Implement `clear()`
+  - [x] Iterate and destroy all alive values (use Slab::destroy)
+  - [x] Rebuild free list (skip dead slots)
+  - [x] Reset size to 0
 
-- [ ] Implement `reset()`
-  - [ ] Clear all slabs
-  - [ ] Reset to initial state
+- [x] Implement `reset()`
+  - [x] Clear all slabs via `clear_slabs()` helper
+  - [x] Returns to initial state (empty, ready for new allocations)
 
-- [ ] Tests for all public interfaces
+- [x] Tests for all public interfaces
+
+**Implementation Notes from Phase 4:**
+- `for_each()` non-const delegates to const version with const_cast
+- `for_each()` reconstructs keys from index + version during iteration
+- `clear()` uses `Slab::destroy()` for alive slots (properly clears alive bit and increments version)
+- `clear()` rebuilds free list by iterating all slots, skipping dead ones
+- `reset()` simply calls `clear_slabs()` which deallocates all slabs
+- Comprehensive property-based tests verify iteration visits all elements and clear/reset behavior
 
 ### Phase 5: Copy/Move Operations
 

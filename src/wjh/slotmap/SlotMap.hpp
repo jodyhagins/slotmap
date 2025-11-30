@@ -22,6 +22,16 @@
 namespace wjh::slotmap {
 
 /**
+ * Tag type for early exit from for_each().
+ *
+ * Set stop = true to terminate iteration early.
+ */
+struct Break
+{
+    bool stop = false;
+};
+
+/**
  * A high-performance slot map container with O(1) insertion, deletion,
  * and lookup using persistent unique keys.
  *
@@ -145,6 +155,52 @@ public:
      * @return true if an element was erased, false otherwise
      */
     bool erase(key_type key);
+
+    /**
+     * Clear all elements from the container.
+     *
+     * Destroys all alive elements, increments all versions, and resets
+     * the free list. Memory is retained for reuse.
+     *
+     * @post is_empty() == true, size() == 0
+     * @note Keys that were valid before clear() are now invalid (version
+     * mismatch)
+     */
+    void clear();
+
+    /**
+     * Reset the container to its initial state.
+     *
+     * Destroys all elements and deallocates all slabs, returning to a
+     * freshly-constructed state.
+     *
+     * @post is_empty() == true, size() == 0
+     */
+    void reset();
+
+    // ========================================================================
+    // Iteration
+    // ========================================================================
+
+    /**
+     * Iterate over all alive elements.
+     *
+     * Invokes func(key, value, Break) or func(key, value) or func(value) for
+     * each alive element. Set break_tag.stop = true to stop iteration early.
+     *
+     * @param func Callable with signature void(key_type, T&, Break&),
+     * void(key_type, T&), void(T&, Break&), or void(T&).
+     * @return Number of elements visited (may be less than size() if early
+     * exit)
+     *
+     * @note Iteration order is unspecified but consistent within a single call
+     * @note Undefined behavior: modifying the SlotMap during iteration
+     */
+    template <typename F>
+    size_type for_each(F && func);
+
+    template <typename F>
+    size_type for_each(F && func) const;
 
     // ========================================================================
     // Capacity

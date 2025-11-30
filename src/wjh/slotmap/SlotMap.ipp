@@ -342,6 +342,147 @@ contains(key_type key) const
     return use(key, [](value_type const &) {});
 }
 
+template <typename F, typename KeyT, typename ValT>
+static void
+invoke_for_each(F && func, KeyT key, ValT & val, [[maybe_unused]] Break & brk)
+{
+    if constexpr (std::is_invocable_v<F, KeyT, ValT &, Break &>) {
+        std::invoke(std::forward<F>(func), key, val, brk);
+    } else if constexpr (std::is_invocable_v<F, KeyT, ValT &>) {
+        std::invoke(std::forward<F>(func), key, val);
+    } else if constexpr (std::is_invocable_v<F, ValT &, Break &>) {
+        std::invoke(std::forward<F>(func), val, brk);
+    } else {
+        std::invoke(std::forward<F>(func), val);
+    }
+}
+
+template <typename KeyT>
+template <typename F>
+SlotMap<KeyT>::size_type
+SlotMap<KeyT>::
+for_each(F && func)
+{
+    return const_cast<SlotMap const &>(*this).for_each(
+        [&func](key_type key, value_type const & v, Break & brk) {
+            invoke_for_each(
+                std::forward<F>(func),
+                key,
+                const_cast<value_type &>(v),
+                brk);
+        });
+}
+
+template <typename KeyT>
+template <typename F>
+SlotMap<KeyT>::size_type
+SlotMap<KeyT>::
+for_each(F && func) const
+{
+    naked_size_type visited = 0;
+    Break brk{};
+
+    // Iterate over all slabs
+    for (std::size_t slab_idx = 0; slab_idx < slabs_.size() && not brk.stop;
+         ++slab_idx)
+    {
+        auto const * slab = slabs_[slab_idx].get();
+        if (not slab) {
+            continue; // Skip recycled slabs
+        }
+
+        auto const base_idx = static_cast<naked_index_type>(
+            slab_idx << log2_slots_per_slab_);
+
+        // Iterate over slots in this slab
+        for (naked_size_type slot_idx = 0;
+             slot_idx < slots_per_slab_ && not brk.stop;
+             ++slot_idx)
+        {
+            auto const idx = index_type(
+                static_cast<naked_index_type>(slot_idx));
+
+            if (slab->is_alive(idx)) {
+                // Build the key from index + version
+                auto const full_idx = index_type(
+                    static_cast<naked_index_type>(base_idx + slot_idx));
+                auto const ver = slab->slot(idx).version();
+                auto const key = key_type(full_idx, ver, user_type{});
+
+                invoke_for_each(
+                    std::forward<F>(func),
+                    key,
+                    slab->slot(idx).value(),
+                    brk);
+                ++visited;
+            }
+        }
+    }
+
+    return size_type(visited);
+}
+
+template <typename KeyT>
+void
+SlotMap<KeyT>::
+clear()
+{
+    // Start with empty free list - we'll rebuild it
+    free_list_head_ = end_of_free_list;
+
+    for (std::size_t slab_idx = 0; slab_idx < slabs_.size(); ++slab_idx) {
+        auto * slab = slabs_[slab_idx].get();
+        if (not slab) {
+            continue;
+        }
+
+        auto const base_idx = static_cast<naked_size_type>(
+            slab_idx << log2_slots_per_slab_);
+
+        // Process all slots: destroy alive values, rebuild free list
+        for (naked_size_type slot_idx = 0; slot_idx < slots_per_slab_;
+             ++slot_idx)
+        {
+            auto const idx = index_type(
+                static_cast<naked_index_type>(slot_idx));
+
+            if (slab->is_alive(idx)) {
+                // destroy() clears alive bit, increments version (or marks
+                // dead)
+                bool const can_reuse = slab->destroy(idx);
+                if (can_reuse) {
+                    // Add to free list
+                    auto const full_idx = static_cast<naked_index_type>(
+                        base_idx + slot_idx);
+                    slab->slot(idx).set_next(free_list_head_);
+                    free_list_head_ = size_type(full_idx);
+                }
+            } else {
+                // Slot was already in free list - check if it's still usable
+                auto const ver = slab->slot(idx).version();
+                if (ver.value < version_type::mask) {
+                    // Add to new free list
+                    auto const full_idx = static_cast<naked_index_type>(
+                        base_idx + slot_idx);
+                    slab->slot(idx).set_next(free_list_head_);
+                    free_list_head_ = size_type(full_idx);
+                }
+                // Dead slots (version == max) are not added
+            }
+        }
+    }
+
+    size_ = 0;
+}
+
+template <typename KeyT>
+void
+SlotMap<KeyT>::
+reset()
+{
+    clear_slabs();
+}
+
 } // namespace wjh::slotmap
 
 #endif // WJH_SLOTMAP_FC1C5D6C7D5C44F8AA067828C821C8DF
