@@ -49,9 +49,12 @@ public:
     // ========================================================================
 
     /**
-     * Sentinel value marking end of free list
+     * Sentinel value marking end of free list.
+     *
+     * This value is one past the maximum valid index, which fits in size_type
+     * (which has IndexBits + 1 bits) but cannot be a valid index_type.
      */
-    static constexpr index_type null_index = index_type(index_type::mask);
+    static constexpr size_type end_of_free_list = ++size_type(index_type::mask);
 
     // ========================================================================
     // Constructors and Destructor
@@ -120,7 +123,7 @@ private:
     using slot_type = typename slab_type::slot_type;
 
     std::vector<std::unique_ptr<slab_type>> slabs_{};
-    index_type free_list_head_ = null_index;
+    size_type free_list_head_ = end_of_free_list;
     naked_size_type size_ = 0;
     naked_size_type slots_per_slab_;
     unsigned log2_slots_per_slab_ = 0;

@@ -103,7 +103,7 @@ TEST_CASE("SlotMap: explicit slab size construction")
     }
 
     SUBCASE("slab size cannot exceed max index") {
-        // With 4 index bits, max_index = (1 << 4) - 1 = 15 (null_index)
+        // With 4 index bits, max_index = (1 << 4) - 1 = 15
         // So max usable slots is 15, and slab size must be <= 15
         // But slab size must be power of 2, so max is 8
         using SmallMap = SlotMap<Key<4, 4, 24, int>>;
@@ -119,15 +119,79 @@ TEST_CASE("SlotMap: explicit slab size construction")
 
 TEST_CASE("SlotMap: constants")
 {
-    SUBCASE("null_index is correct") {
+    SUBCASE("end_of_free_list is one past 1 << numbits") {
         using Map16 = SlotMap<Key<16, 16, 0, int>>;
-        CHECK(Map16::null_index == 0xFFFF);
+        CHECK(Map16::end_of_free_list.value == 0x10000u); // 2^16
 
         using Map8 = SlotMap<Key<8, 8, 16, int>>;
-        CHECK(Map8::null_index == 0xFF);
+        CHECK(Map8::end_of_free_list.value == 0x100u); // 2^8
 
         using Map4 = SlotMap<Key<4, 4, 24, int>>;
-        CHECK(Map4::null_index == 0xF);
+        CHECK(Map4::end_of_free_list.value == 0x10u); // 2^4
+    }
+
+    SUBCASE("end_of_free_list fits in size_type but not index_type") {
+        // Verify the design: end_of_free_list can be stored in size_type
+        // but would overflow index_type
+
+        using Map16 = SlotMap<Key<16, 16, 0, int>>;
+        static_assert(sizeof(Map16::size_type) * 8 >= 17); // Need 17 bits
+        static_assert(sizeof(Map16::index_type) * 8 >= 16); // Only 16 bits
+
+        // The sentinel value should be exactly 2^IndexBits
+        CHECK(Map16::end_of_free_list.value == (1u << 16));
+    }
+}
+
+TEST_CASE("SlotMap: free list sentinel storage in Slot")
+{
+    // This test verifies that the sentinel value can be stored in a Slot's
+    // next field. This is critical for the free list to work correctly.
+    //
+    // The Slab's slot_type uses size_type (not index_type) for the next-link,
+    // which allows storing end_of_free_list (one past max index).
+
+    using Map = SlotMap<Key<8, 8, 16, int>>;
+    using index_type = Map::index_type;
+    using size_type = Map::size_type;
+    using version_type = Map::version_type;
+
+    // end_of_free_list = 256 (0x100), which doesn't fit in uint8_t (index_type)
+    // but does fit in uint16_t (size_type)
+    constexpr auto sentinel = Map::end_of_free_list;
+    CHECK(sentinel.value == 0x100u);
+
+    SUBCASE("size_type slot can store sentinel") {
+        // Create a slot using size_type for the next-link (as Slab now does)
+        using slot_type = wjh::slotmap::detail::Slot<int, size_type, version_type>;
+        alignas(slot_type) std::byte storage[sizeof(slot_type)]{};
+        auto & slot = *::new (storage) slot_type{};
+
+        // Store the sentinel in the slot's next field
+        slot.set_next(sentinel);
+
+        // Verify we can retrieve it correctly (no truncation)
+        CHECK(slot.next() == sentinel);
+
+        slot.~slot_type();
+    }
+
+    SUBCASE("index_type slot would truncate sentinel") {
+        // This demonstrates that index_type cannot hold the sentinel
+        // (it wraps around to 0 due to overflow)
+        using bad_slot_type = wjh::slotmap::detail::Slot<int, index_type, version_type>;
+        alignas(bad_slot_type) std::byte storage[sizeof(bad_slot_type)]{};
+        auto & slot = *::new (storage) bad_slot_type{};
+
+        // Store a truncated version (simulating what would happen)
+        auto truncated = index_type(static_cast<index_type::value_type>(sentinel.value));
+        slot.set_next(truncated);
+
+        // The retrieved value is NOT the sentinel - it wrapped to 0
+        CHECK(slot.next() != size_type(sentinel));
+        CHECK(slot.next().value == 0u);  // 0x100 truncated to uint8_t = 0
+
+        slot.~bad_slot_type();
     }
 }
 

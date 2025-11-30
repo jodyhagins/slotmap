@@ -192,7 +192,7 @@ can_be_recycled() const noexcept
 template <typename T, typename IndexT, typename VersionT, typename SizeT>
 void
 Slab<T, IndexT, VersionT, SizeT>::
-recycle(index_type first_index, index_type last_next)
+recycle(index_type first_index, size_type last_next)
 {
     assert(can_be_recycled());
     assert(are_all_dead());

@@ -31,14 +31,15 @@ namespace wjh::slotmap::detail {
  * @tparam SizeT The size type for counts
  */
 template <typename T, typename IndexT, typename VersionT, typename SizeT>
-class alignas(std::max(alignof(SizeT), alignof(Slot<T, IndexT, VersionT>))) Slab
+class alignas(std::max(alignof(SizeT), alignof(Slot<T, SizeT, VersionT>))) Slab
 {
 public:
     using value_type = T;
     using index_type = IndexT;
     using version_type = VersionT;
     using size_type = SizeT;
-    using slot_type = Slot<T, IndexT, VersionT>;
+    // Use size_type for Slot's next-link type so it can hold end_of_free_list
+    using slot_type = Slot<T, SizeT, VersionT>;
 
     static constexpr version_type max_version = version_type::mask;
 
@@ -140,10 +141,11 @@ public:
      * @param first_index  The true index of the first slot in this slab.
      *
      * @param last_next  The next value for the last slot in this slab.
+     *                   This is size_type to allow storing end_of_free_list.
      *
      * @pre can_be_recycled()
      */
-    void recycle(index_type first_index, index_type last_next);
+    void recycle(index_type first_index, size_type last_next);
 
 private:
     using naked_index_type = typename index_type::value_type;

@@ -36,7 +36,7 @@ NOTE: This is an initial design. As implementation unfolds, we may need to chang
 | **Version** | Monotonically increasing counter per slot to detect stale keys. |
 | **User Bits** | Optional user-defined metadata stored within the key. |
 | **Slot** | Storage unit containing either a value (when alive) or a free-list link (when free). |
-| **Slab** | Fixed-size memory block containing an array of slots plus metadata. |
+| **Slab** | Fixed-size memory block containing an array of slots plus metadata and alive bitmap. |
 | **Null Key** | A key with all bits zero (version=0, index=0, user=0). Never returned by `emplace()`. |
 
 ### Invariants
@@ -45,6 +45,7 @@ NOTE: This is an initial design. As implementation unfolds, we may need to chang
 2. **Key Uniqueness**: A key uniquely identifies a specific object. Once erased, that exact key is never valid again.
 3. **ABA Protection**: Version numbers prevent returning stale data when a slot is reused.
 4. **Contiguous Storage**: Values within a slab are stored contiguously for cache efficiency.
+5. **All Indices Usable**: Every index from 0 to `2^IndexBits - 1` can store values; no index is wasted as a sentinel.
 
 ---
 
@@ -55,28 +56,31 @@ NOTE: This is an initial design. As implementation unfolds, we may need to chang
 ```cpp
 namespace wjh::slotmap {
 
-template <typename...> class SlotMap;
-
-template <
-    unsigned IndexBits,
-    unsigned VersionBits,
-    unsigned UserBits,
-    typename T>
-class SlotMap<Key<IndexBits, VersionBits, UserBits, T>>;
+template <typename KeyT>
+class SlotMap;
 
 } // namespace wjh::slotmap
 ```
+
+The template takes any `KeyT` that satisfies `is_key_v<KeyT>` (i.e., an instantiation of `Key<IndexBits, VersionBits, UserBits, T>`).
 
 ### Type Aliases
 
 ```cpp
 // Within the class:
-using key_type = Key<IndexBits, VersionBits, UserBits, T>;
-using value_type = T;
-using size_type = typename key_type::Index::value_type;
-using version_type = typename key_type::Version::value_type;
-using index_type = typename key_type::Index::value_type;
+using key_type = KeyT;
+using value_type = typename key_type::tag_type;     // The stored type T
+using index_type = typename key_type::index_type;   // Strong type with IndexBits bits
+using version_type = typename key_type::version_type; // Strong type with VersionBits bits
+using user_type = typename key_type::user_type;     // Strong type with UserBits bits
+using size_type = typename key_type::size_type;     // Strong type with IndexBits+1 bits
 ```
+
+**Important**: These are all strong types (derived from `detail::TypeBase`), not raw integral types. They provide type safety and have a `.value` member for accessing the underlying value. Use string types in the interfaces - can use naked types for internal implementation details.
+
+The `size_type` has `IndexBits + 1` bits, allowing it to hold values from 0 to `2^IndexBits` (inclusive). This is critical for:
+- Representing the count of all possible indices
+- Storing the free list sentinel (`end_of_free_list = 2^IndexBits`)
 
 ### Convenience Aliases
 
@@ -97,8 +101,9 @@ using SlotMap = slotmap::SlotMap<KeyT>;
 
 Each slab is a contiguous memory allocation containing:
 
-1. **Slot Array**: `slots_per_slab` slots, each holding either a value or free-list link
-2. **Slab Metadata**: Dead slot count for this slab
+1. **Slab Metadata**: Dead slot count, slots per slab count
+2. **Slot Array**: `slots_per_slab` slots, each holding either a value or free-list link
+3. **Alive Bitmap**: `ceil(slots_per_slab / 8)` bytes tracking which slots have values
 
 #### Slab Layout (Conceptual)
 
@@ -106,42 +111,31 @@ Each slab is a contiguous memory allocation containing:
 ┌─────────────────────────────────────────────────────────────┐
 │                        Slab                                  │
 ├─────────────────────────────────────────────────────────────┤
-│  Metadata: { dead_count: size_type }                        │
+│  Metadata: { dead_count, slots_per_slab }                   │
 ├─────────────────────────────────────────────────────────────┤
 │  Slot[0] │ Slot[1] │ Slot[2] │ ... │ Slot[slots_per_slab-1] │
+├─────────────────────────────────────────────────────────────┤
+│  Alive Bitmap (ceil(slots_per_slab / 8) bytes)              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ### Slot Structure
 
-Each slot contains a union and version storage:
+Each slot contains byte-array storage for value/next-link and version:
 
 ```cpp
-struct Slot {
-    union Storage {
-        index_type next;    // Active when slot is FREE
-        value_type value;   // Active when slot is ALIVE
-    } storage_;
+template <typename T, typename SizeT, typename VersionT>
+class Slot {
+    // Storage for either size_type (next link) or T (value)
+    alignas(std::max(alignof(SizeT), alignof(T)))
+        std::array<std::byte, std::max(sizeof(SizeT), sizeof(T))> storage_;
 
-    // Version stored as byte array to avoid padding issues
-    std::array<std::byte, sizeof(version_type)> version_bytes_;
+    // Version stored as byte array
+    std::array<std::byte, sizeof(VersionT)> version_bytes_;
 };
 ```
 
-#### Slot Memory Layout
-
-```
-┌──────────────────────────────────────────┐
-│                  Slot                     │
-├────────────────────────┬─────────────────┤
-│  union Storage         │  version_bytes_ │
-│  (sizeof(value_type)   │  (sizeof        │
-│   or sizeof(index_type)│   version_type) │
-│   whichever larger)    │                 │
-└────────────────────────┴─────────────────┘
-```
-
-**Note**: The union's size is `max(sizeof(value_type), sizeof(index_type))`. This may waste space if `value_type` is small, but simplifies implementation.
+**Note**: The slot uses `size_type` (not `index_type`) for the next-link field. This allows storing the `end_of_free_list` sentinel value (`2^IndexBits`), which doesn't fit in `index_type`.
 
 ### Slot Operations
 
@@ -151,8 +145,8 @@ version_type version() const;
 void set_version(version_type v);
 
 // Free-list access - only valid when FREE
-index_type next() const;
-void set_next(index_type i);
+size_type next() const;      // Returns size_type to hold sentinel
+void set_next(size_type i);  // Takes size_type for same reason
 
 // Value access - only valid when ALIVE
 template <typename... Args>
@@ -165,15 +159,15 @@ value_type const& value() const;
 ### SlotMap Container Structure
 
 ```cpp
-template <...>
-class SlotMap<Key<...>> {
+template <typename KeyT>
+class SlotMap {
 private:
-    std::vector<Slab*> slabs_;           // Indexed by slab_index = key.index() >> log2_slots_per_slab_
-    index_type free_list_head_;          // Head of global free list (null_index if empty)
-    size_type size_;                     // Number of alive elements
-    size_type slots_per_slab_;           // Power of 2, set at construction
-    unsigned log2_slots_per_slab_;       // For fast division: slab_index = index >> this
-    index_type next_slab_base_index_;    // Base index for next slab to allocate
+    std::vector<std::unique_ptr<slab_type>> slabs_;
+    size_type free_list_head_;           // size_type to hold end_of_free_list
+    naked_size_type size_;               // Number of alive elements
+    naked_size_type slots_per_slab_;     // Power of 2, set at construction
+    unsigned log2_slots_per_slab_;       // For fast division
+    naked_index_type next_slab_base_index_;
 };
 ```
 
@@ -188,7 +182,7 @@ slot_index_within_slab = index & (slots_per_slab_ - 1);
 ### Slab Pointer Vector
 
 - `slabs_[slab_index]` may be `nullptr` if that slab was exhausted and recycled
-- Maximum vector size: `(max_index + 1) / slots_per_slab_`
+- Maximum vector size: `2^IndexBits / slots_per_slab_`
 - Vector grows lazily as slabs are allocated
 
 ---
@@ -204,21 +198,21 @@ slot_index_within_slab = index & (slots_per_slab_ - 1);
                     │    list)    │
                     └──────┬──────┘
                            │
-                           │ emplace() → version becomes 1
+                           │ emplace() → version remains 0
                            ↓
                     ┌─────────────┐
                     │    ALIVE    │  Value is constructed
-                    │  (in use)   │
+                    │  (in use)   │  Alive bitmap bit is set
                     └──────┬──────┘
                            │
-                           │ erase() → version++
+                           │ erase() → alive bit cleared
                            ↓
            ┌───────────────┴───────────────┐
            │                               │
            │ version < max_version         │ version == max_version
            ↓                               ↓
     ┌─────────────┐                 ┌─────────────┐
-    │   UNUSED    │                 │    DEAD     │
+    │   UNUSED    │ ++version       │    DEAD     │
     │  (back to   │                 │ (permanent, │
     │  free list) │                 │  never      │
     └─────────────┘                 │  reused)    │
@@ -227,20 +221,27 @@ slot_index_within_slab = index & (slots_per_slab_ - 1);
 
 ### Version Semantics
 
-- **Version 0**: Reserved for null key. Slot is FREE but has never been used.
-- **Version 1 to max_version-1**: Slot has been used and can be reused after erase.
-- **Version max_version**: Slot is DEAD. It remains in the slab but is never placed in the free list.
+The version stored in the slot represents the **next version to use on emplace**:
+- **Version 0**: All slots, but the first slot in the first slab are initialized to 0. The first slot in the first slab is initialized to 1 (null-key is all zeros).
+- **Version max_version**: Slot is DEAD. Cannot be reused.
+- See Slab.ipp emplace/destroy for clarification
 
-Where `max_version = (1 << VersionBits) - 1`.
+Where `max_version = version_type::mask = (1 << VersionBits) - 1`.
 
 ### State Transitions
 
 | From | Event | To | Actions |
 |------|-------|-----|---------|
-| UNUSED (v=0) | emplace() | ALIVE (v=1) | Construct value, remove from free list |
-| UNUSED (v>0) | emplace() | ALIVE (v unchanged) | Construct value, remove from free list |
-| ALIVE | erase() where v < max | UNUSED | Destroy value, increment version, add to free list head |
-| ALIVE | erase() where v == max | DEAD | Destroy value, increment slab's dead_count |
+| UNUSED | emplace() | ALIVE  | Construct value, set alive bit, remove from free list |
+| ALIVE | erase() where v < max | UNUSED | Destroy value, clear alive bit, increment version, add to free list |
+| ALIVE | erase() where v == max | DEAD | Destroy value, clear alive bit, increment slab's dead_count |
+
+### Alive Bitmap
+
+Each slab maintains a bitmap where bit N indicates whether slot N is alive (has a constructed value). This enables:
+- O(1) alive status checking without examining version
+- Efficient iteration over alive slots
+- Proper destruction in Slab destructor
 
 ---
 
@@ -248,26 +249,25 @@ Where `max_version = (1 << VersionBits) - 1`.
 
 ### Structure
 
-The free list is a singly-linked list using the `next` field of the slot's union.
+The free list is a singly-linked list using the `next` field of the slot's storage.
 
 ```
-free_list_head_ ──→ Slot[i].next ──→ Slot[j].next ──→ ... ──→ null_index
+free_list_head_ ──→ Slot[i].next ──→ Slot[j].next ──→ ... ──→ end_of_free_list
 ```
-
-Where `null_index` is the maximum representable index value plus one (or a sentinel value).
 
 ### Sentinel Value
 
 ```cpp
-static constexpr index_type null_index =
-    static_cast<index_type>((index_type{1} << IndexBits) - 1);
+static constexpr size_type end_of_free_list = ++size_type(index_type::mask);
+// This equals 2^IndexBits, e.g., 0x10000 for 16-bit indices
 ```
 
-**Note**: This means the maximum usable index is `null_index - 1`. The null_index itself is reserved as the end-of-list sentinel.
+**Key insight**: Because `size_type` has `IndexBits + 1` bits, it can hold the value `2^IndexBits` which is one past the maximum valid index. This sentinel value:
+- Cannot be confused with any valid index
+- Allows **all** indices (0 to `2^IndexBits - 1`) to be used for storing values
+- Fits in `size_type` but not `index_type`
 
-**Alternative**: Use a separate boolean or high bit. But since index 0 with version 0 is the null key, we could use max_index as sentinel. Document the chosen approach.
-
-**Decision**: Use `(1 << IndexBits) - 1` as null_index sentinel. This reduces usable slots by 1, which is acceptable.
+This is why the Slot's next-link uses `size_type`, not `index_type`.
 
 ### Operations
 
@@ -275,14 +275,14 @@ static constexpr index_type null_index =
 
 ```cpp
 index_type allocate_slot() {
-    if (free_list_head_ == null_index) {
+    if (free_list_head_ == end_of_free_list) {
         if (!allocate_new_slab()) {
-            return null_index;  // No more room
+            return index_type{};  // No more room - return null index
         }
     }
-    index_type idx = free_list_head_;
+    index_type idx = index_type(free_list_head_);  // Safe: not sentinel
     Slot& slot = get_slot(idx);
-    free_list_head_ = slot.next();
+    free_list_head_ = slot.next();  // May be end_of_free_list
     return idx;
 }
 ```
@@ -292,8 +292,8 @@ index_type allocate_slot() {
 ```cpp
 void free_slot(index_type idx) {
     Slot& slot = get_slot(idx);
-    slot.set_next(free_list_head_);
-    free_list_head_ = idx;
+    slot.set_next(free_list_head_);  // size_type implicit conversion
+    free_list_head_ = size_type(idx);
 }
 ```
 
@@ -304,15 +304,15 @@ When a new slab is created with base index `base`:
 ```cpp
 // Link all slots in the new slab
 for (size_type i = 0; i < slots_per_slab_ - 1; ++i) {
-    slab->slot(i).set_next(base + i + 1);
-    slab->slot(i).set_version(0);
+    slab->slot(i).set_next(size_type(base + i + 1));
+    slab->slot(i).set_version(version_type{0});
 }
 // Last slot in slab points to old free list head
 slab->slot(slots_per_slab_ - 1).set_next(free_list_head_);
-slab->slot(slots_per_slab_ - 1).set_version(0);
+slab->slot(slots_per_slab_ - 1).set_version(version_type{0});
 
 // New free list head is first slot in new slab
-free_list_head_ = base;
+free_list_head_ = size_type(base);
 ```
 
 ---
@@ -324,6 +324,7 @@ free_list_head_ = base;
 A slab becomes exhausted when all its slots are DEAD:
 ```cpp
 slab->dead_count() == slots_per_slab_
+// or equivalently: slab->can_be_recycled()
 ```
 
 ### Recycling Process
@@ -331,10 +332,10 @@ slab->dead_count() == slots_per_slab_
 When a slab at `slab_index` becomes exhausted:
 
 1. **Check if there's room for more slabs**:
-   - If `next_slab_base_index_ + slots_per_slab_ <= null_index`: Can recycle
+   - If `next_slab_base_index_ + slots_per_slab_ <= end_of_free_list`: Can recycle
    - Otherwise: Delete the slab and set `slabs_[slab_index] = nullptr`
 
-2. **Recycle the slab**:
+2. **Recycle the slab** using `Slab::recycle(first_index, last_next)`:
    ```cpp
    // Move slab to next available position
    size_type new_slab_index = next_slab_base_index_ >> log2_slots_per_slab_;
@@ -344,22 +345,13 @@ When a slab at `slab_index` becomes exhausted:
        slabs_.resize(new_slab_index + 1, nullptr);
    }
 
-   // Reset slab metadata
-   slab->reset_dead_count();
-
-   // Re-initialize all slots as FREE with version 0
-   index_type base = next_slab_base_index_;
-   for (size_type i = 0; i < slots_per_slab_ - 1; ++i) {
-       slab->slot(i).set_next(base + i + 1);
-       slab->slot(i).set_version(0);
-   }
-   slab->slot(slots_per_slab_ - 1).set_next(free_list_head_);
-   slab->slot(slots_per_slab_ - 1).set_version(0);
+   // Recycle resets dead_count, versions to 0, and links slots
+   slab->recycle(index_type(next_slab_base_index_), free_list_head_);
 
    // Update bookkeeping
    slabs_[slab_index] = nullptr;
-   slabs_[new_slab_index] = slab;
-   free_list_head_ = base;
+   slabs_[new_slab_index] = std::move(slab);
+   free_list_head_ = size_type(next_slab_base_index_);
    next_slab_base_index_ += slots_per_slab_;
    ```
 
@@ -394,8 +386,8 @@ SlotMap();
 
 - **Effect**: Constructs an empty SlotMap with default slab size
 - **Default Slab Size Logic**:
-  - If `(1 << IndexBits) * sizeof(Slot) <= 2MB`: Use single slab covering all indices
-  - Otherwise: Use 4096 slots per slab (or nearest power of 2 fitting in ~256KB)
+  - If `2^IndexBits * sizeof(Slot) <= 2MB`: Use single slab covering all indices
+  - Otherwise: Use 4096 slots per slab (or largest power of 2 that fits)
 - **Postconditions**: `is_empty() == true`, `size() == 0`
 - **Throws**: `std::bad_alloc` if initial slab allocation fails
 
@@ -408,10 +400,10 @@ explicit SlotMap(size_type slots_per_slab);
 - **Preconditions**:
   - `slots_per_slab > 0`
   - `slots_per_slab` is a power of 2
-  - `slots_per_slab <= (1 << IndexBits)`
+  - `slots_per_slab <= 2^IndexBits`
 - **Effect**: Constructs an empty SlotMap with specified slab size
 - **Throws**:
-  - `std::invalid_argument` if `slots_per_slab` is not a power of 2
+  - `std::invalid_argument` if `slots_per_slab` is not a power of 2 or exceeds max
   - `std::bad_alloc` if initial slab allocation fails
 
 ### Copy/Move Operations
@@ -464,7 +456,7 @@ SlotMap& operator=(SlotMap&& other) noexcept;
 ```
 
 - **Effect**: Destroys all alive values and deallocates all slabs
-- **Note**: Calls destructor for each alive `T`
+- **Note**: Slab destructor uses alive bitmap to find and destroy alive values
 
 ### Element Access
 
@@ -621,9 +613,16 @@ struct break_t {
 
 ```
 src/wjh/slotmap/
-├── SlotMap.hpp          # Main SlotMap template
-├── detail/
-│   └── Slab.hpp         # Slab and Slot implementation
+├── Key.hpp              # Key template with strong types
+├── Key.ipp              # Key implementation
+├── SlotMap.hpp          # Main SlotMap template declaration
+├── SlotMap.ipp          # SlotMap implementation
+├── detail.hpp           # TypeBase, hash, other utilities
+└── detail/
+    ├── Slot.hpp         # Slot class declaration
+    ├── Slot.ipp         # Slot implementation
+    ├── Slab.hpp         # Slab class declaration
+    └── Slab.ipp         # Slab implementation
 ```
 
 ### Slab Implementation
@@ -633,27 +632,32 @@ src/wjh/slotmap/
 ```cpp
 namespace wjh::slotmap::detail {
 
-template <typename T, typename IndexType, typename VersionType, typename SizeType>
+template <typename T, typename IndexT, typename VersionT, typename SizeT>
 class Slab {
 public:
-    explicit Slab(SizeType slots_per_slab);
-    ~Slab();
+    using slot_type = Slot<T, SizeT, VersionT>;  // Note: SizeT for next-link
 
-    // Non-copyable, non-movable (managed by SlotMap)
-    Slab(Slab const&) = delete;
-    Slab& operator=(Slab const&) = delete;
+    static std::unique_ptr<Slab> create(SizeT slots_per_slab);
 
-    Slot<T, IndexType, VersionType>& slot(SizeType index);
-    Slot<T, IndexType, VersionType> const& slot(SizeType index) const;
+    // Lifecycle management (uses alive bitmap)
+    template <typename... Args>
+    VersionT emplace(IndexT index, Args&&... args);
+    bool destroy(IndexT index);  // Returns false if slot is now dead
+    bool is_alive(IndexT index) const noexcept;
 
-    SizeType dead_count() const;
-    void increment_dead_count();
-    void reset_dead_count();
+    // Slot access
+    slot_type& slot(IndexT index) noexcept;
+    slot_type const& slot(IndexT index) const noexcept;
+
+    // Dead count tracking
+    SizeT dead_count() const noexcept;
+    bool can_be_recycled() const noexcept;
+    void recycle(IndexT first_index, SizeT last_next);
 
 private:
-    SizeType dead_count_;
-    // Flexible array member or separate allocation for slots
-    // Implementation may use placement new
+    naked_size_type dead_count_;
+    naked_size_type slots_per_slab_;
+    // Followed by: slot array, then alive bitmap
 };
 
 } // namespace wjh::slotmap::detail
@@ -664,16 +668,16 @@ private:
 ```cpp
 namespace wjh::slotmap::detail {
 
-template <typename T, typename IndexType, typename VersionType>
+template <typename T, typename SizeT, typename VersionT>
 class Slot {
 public:
     // Version access (always valid)
-    VersionType version() const noexcept;
-    void set_version(VersionType v) noexcept;
+    VersionT version() const noexcept;
+    void set_version(VersionT v) noexcept;
 
-    // Free-list access (only when FREE)
-    IndexType next() const noexcept;
-    void set_next(IndexType i) noexcept;
+    // Free-list access (only when FREE) - uses SizeT for sentinel
+    SizeT next() const noexcept;
+    void set_next(SizeT i) noexcept;
 
     // Value access (only when ALIVE)
     template <typename... Args>
@@ -683,15 +687,8 @@ public:
     T const& value() const noexcept;
 
 private:
-    union Storage {
-        IndexType next;
-        T value;
-
-        Storage() noexcept : next{} {}
-        ~Storage() {}  // Manual destruction
-    } storage_;
-
-    std::array<std::byte, sizeof(VersionType)> version_bytes_;
+    alignas(...) std::array<std::byte, ...> storage_;
+    std::array<std::byte, sizeof(VersionT)> version_bytes_;
 };
 
 } // namespace wjh::slotmap::detail
@@ -706,13 +703,13 @@ bool is_valid(key_type key) const {
     if (key.is_null()) return false;
 
     index_type idx = key.index();
-    if (idx >= next_slab_base_index_) return false;
+    if (size_type(idx) >= size_type(next_slab_base_index_)) return false;
 
-    size_type slab_idx = idx >> log2_slots_per_slab_;
+    auto slab_idx = static_cast<std::size_t>(idx >> log2_slots_per_slab_);
     if (slab_idx >= slabs_.size() || slabs_[slab_idx] == nullptr) return false;
 
-    Slot const& slot = get_slot(idx);
-    return slot.version() == key.version();
+    return slabs_[slab_idx]->is_alive(idx) &&
+           slabs_[slab_idx]->slot(idx).version() == key.version();
 }
 ```
 
@@ -721,54 +718,54 @@ bool is_valid(key_type key) const {
 ```cpp
 private:
     // Get slot by absolute index
-    Slot& get_slot(index_type idx) {
-        size_type slab_idx = idx >> log2_slots_per_slab_;
-        size_type slot_idx = idx & (slots_per_slab_ - 1);
-        return slabs_[slab_idx]->slot(slot_idx);
-    }
-
-    Slot const& get_slot(index_type idx) const {
-        size_type slab_idx = idx >> log2_slots_per_slab_;
-        size_type slot_idx = idx & (slots_per_slab_ - 1);
+    slot_type& get_slot(index_type idx) noexcept {
+        auto slab_idx = static_cast<std::size_t>(idx >> log2_slots_per_slab_);
+        auto slot_idx = static_cast<size_type>(idx & (slots_per_slab_ - 1));
         return slabs_[slab_idx]->slot(slot_idx);
     }
 
     // Allocate a new slab if possible
     bool allocate_new_slab() {
-        if (next_slab_base_index_ >= null_index) return false;
+        if (size_type(next_slab_base_index_) >= end_of_free_list) return false;
 
-        size_type new_slab_idx = next_slab_base_index_ >> log2_slots_per_slab_;
+        auto new_slab_idx = static_cast<std::size_t>(
+            next_slab_base_index_ >> log2_slots_per_slab_);
         if (new_slab_idx >= slabs_.size()) {
             slabs_.resize(new_slab_idx + 1, nullptr);
         }
 
-        auto slab = std::make_unique<Slab>(slots_per_slab_);
-        initialize_slab_free_list(slab.get(), next_slab_base_index_);
+        auto slab = slab_type::create(size_type(slots_per_slab_));
+        initialize_slab_free_list(slab.get(), index_type(next_slab_base_index_));
 
-        slabs_[new_slab_idx] = slab.release();
+        slabs_[new_slab_idx] = std::move(slab);
         next_slab_base_index_ += slots_per_slab_;
         return true;
     }
 
-    void initialize_slab_free_list(Slab* slab, index_type base) {
-        for (size_type i = 0; i < slots_per_slab_ - 1; ++i) {
-            slab->slot(i).set_next(base + i + 1);
-            slab->slot(i).set_version(0);
+    void initialize_slab_free_list(slab_type* slab, index_type base) {
+        for (size_type i{0}; i.value < slots_per_slab_ - 1; ++i.value) {
+            auto idx = index_type(base.value + i.value);
+            slab->slot(idx).set_next(size_type(idx.value + 1));
+            slab->slot(idx).set_version(version_type{0});
         }
-        slab->slot(slots_per_slab_ - 1).set_next(free_list_head_);
-        slab->slot(slots_per_slab_ - 1).set_version(0);
-        free_list_head_ = base;
+        auto last_idx = index_type(base.value + slots_per_slab_ - 1);
+        slab->slot(last_idx).set_next(free_list_head_);
+        slab->slot(last_idx).set_version(version_type{0});
+        free_list_head_ = size_type(base);
     }
 ```
 
 ### Constants
 
 ```cpp
-static constexpr index_type null_index =
-    static_cast<index_type>((index_type{1} << IndexBits) - 1);
+// Maximum valid index (all IndexBits set to 1)
+static constexpr index_type null_index = index_type(index_type::mask);
 
-static constexpr version_type max_version =
-    static_cast<version_type>((version_type{1} << VersionBits) - 1);
+// Free list sentinel (2^IndexBits, one past max valid index)
+static constexpr size_type end_of_free_list = ++size_type(index_type::mask);
+
+// Maximum version before slot becomes dead
+static constexpr version_type max_version = version_type(version_type::mask);
 ```
 
 ---
@@ -826,10 +823,10 @@ TEST_CASE("SlotMap default construction") {
         CHECK_NOTHROW(SlotMap<Key<16, 16, 0, int>>(1024));
     }
 
-    SUBCASE("slab size cannot exceed max index") {
-        // With 4 index bits, max usable index is 14 (15 is null_index)
+    SUBCASE("slab size cannot exceed max size") {
+        // With 4 index bits, max size is 2^4 = 16
         CHECK_THROWS_AS(
-            SlotMap<Key<4, 4, 0, int>>(32),  // Exceeds 15
+            SlotMap<Key<4, 4, 0, int>>(32),  // Exceeds 16
             std::invalid_argument
         );
     }
@@ -925,18 +922,18 @@ TEST_CASE("SlotMap null key handling") {
 
 ```cpp
 TEST_CASE("SlotMap capacity exhaustion") {
-    // Small index space: 4 bits = 15 usable indices (16 - 1 for null_index)
+    // Small index space: 4 bits = 16 usable indices (all of them!)
     SlotMap<Key<4, 4, 0, int>> map(4);  // 4 slots per slab
 
     SUBCASE("returns null when capacity exhausted") {
         std::vector<Key<4, 4, 0, int>> keys;
-        for (int i = 0; i < 15; ++i) {
+        for (int i = 0; i < 16; ++i) {  // All 16 indices usable
             auto key = map.emplace(i);
             CHECK(!key.is_null());
             keys.push_back(key);
         }
 
-        // 16th emplace should fail (index 15 is null_index)
+        // 17th emplace should fail
         auto overflow_key = map.emplace(999);
         CHECK(overflow_key.is_null());
     }
@@ -973,205 +970,6 @@ TEST_CASE("SlotMap version exhaustion") {
 }
 ```
 
-#### Copy/Move Tests
-
-```cpp
-TEST_CASE("SlotMap copy operations") {
-    SlotMap<Key<16, 16, 0, std::string>> map;
-    auto key1 = map.emplace("hello");
-    auto key2 = map.emplace("world");
-
-    SUBCASE("copy constructor creates independent copy") {
-        auto copy = map;
-        CHECK(copy.size() == 2);
-        CHECK(copy.contains(key1));
-        CHECK(copy.contains(key2));
-
-        // Modifying copy doesn't affect original
-        copy.erase(key1);
-        CHECK(!copy.contains(key1));
-        CHECK(map.contains(key1));
-    }
-
-    SUBCASE("copy assignment") {
-        SlotMap<Key<16, 16, 0, std::string>> other;
-        other.emplace("other");
-
-        other = map;
-        CHECK(other.size() == 2);
-        CHECK(other.contains(key1));
-    }
-}
-
-TEST_CASE("SlotMap move operations") {
-    SlotMap<Key<16, 16, 0, std::string>> map;
-    auto key = map.emplace("hello");
-
-    SUBCASE("move constructor transfers ownership") {
-        auto moved = std::move(map);
-        CHECK(moved.contains(key));
-        CHECK(map.is_empty());  // NOLINT: testing moved-from state
-    }
-
-    SUBCASE("move assignment") {
-        SlotMap<Key<16, 16, 0, std::string>> other;
-        other = std::move(map);
-        CHECK(other.contains(key));
-    }
-}
-```
-
-#### for_each Tests
-
-```cpp
-TEST_CASE("SlotMap for_each") {
-    SlotMap<Key<16, 16, 0, int>> map;
-    auto k1 = map.emplace(1);
-    auto k2 = map.emplace(2);
-    auto k3 = map.emplace(3);
-
-    SUBCASE("visits all elements") {
-        int sum = 0;
-        auto count = map.for_each([&](auto, int& v, break_t&) {
-            sum += v;
-        });
-        CHECK(count == 3);
-        CHECK(sum == 6);
-    }
-
-    SUBCASE("early exit with break_t") {
-        int sum = 0;
-        auto count = map.for_each([&](auto, int& v, break_t& brk) {
-            sum += v;
-            if (sum >= 3) brk.stop = true;
-        });
-        CHECK(count < 3);
-        CHECK(sum >= 3);
-    }
-
-    SUBCASE("const for_each") {
-        SlotMap<Key<16, 16, 0, int>> const& cmap = map;
-        int sum = 0;
-        cmap.for_each([&](auto, int const& v, break_t&) {
-            sum += v;
-        });
-        CHECK(sum == 6);
-    }
-}
-```
-
-#### pop Tests
-
-```cpp
-TEST_CASE("SlotMap pop") {
-    SlotMap<Key<16, 16, 0, std::string>> map;
-    auto key = map.emplace("hello");
-
-    SUBCASE("pop returns value and removes") {
-        auto result = map.pop(key);
-        CHECK(result.has_value());
-        CHECK(*result == "hello");
-        CHECK(!map.contains(key));
-    }
-
-    SUBCASE("pop returns nullopt for invalid key") {
-        map.erase(key);
-        auto result = map.pop(key);
-        CHECK(!result.has_value());
-    }
-}
-```
-
-#### clear/reset Tests
-
-```cpp
-TEST_CASE("SlotMap clear and reset") {
-    SlotMap<Key<16, 16, 0, int>> map;
-    auto key1 = map.emplace(1);
-    auto key2 = map.emplace(2);
-
-    SUBCASE("clear removes all elements") {
-        map.clear();
-        CHECK(map.is_empty());
-        CHECK(!map.contains(key1));
-        CHECK(!map.contains(key2));
-    }
-
-    SUBCASE("clear invalidates old keys via version bump") {
-        auto v_before = key1.version();
-        map.clear();
-        auto key3 = map.emplace(3);
-        // Same index might be reused, but version is different
-        CHECK(key3.version() > v_before);
-    }
-
-    SUBCASE("reset deallocates memory") {
-        map.reset();
-        CHECK(map.is_empty());
-        // Can still use after reset
-        auto key3 = map.emplace(3);
-        CHECK(map.contains(key3));
-    }
-}
-```
-
-#### Exception Safety Tests
-
-```cpp
-struct ThrowingType {
-    static int throw_after;
-    static int constructions;
-
-    int value;
-
-    ThrowingType(int v) : value(v) {
-        if (++constructions >= throw_after) {
-            throw std::runtime_error("construction failed");
-        }
-    }
-};
-
-TEST_CASE("SlotMap exception safety") {
-    SUBCASE("emplace strong guarantee") {
-        SlotMap<Key<16, 16, 0, ThrowingType>> map;
-        ThrowingType::throw_after = 2;
-        ThrowingType::constructions = 0;
-
-        auto key1 = map.emplace(1);  // Succeeds
-        CHECK(map.size() == 1);
-
-        CHECK_THROWS(map.emplace(2));  // Throws
-        CHECK(map.size() == 1);  // Size unchanged
-        CHECK(map.contains(key1));  // Original still valid
-    }
-}
-```
-
-#### Slab Recycling Tests
-
-```cpp
-TEST_CASE("SlotMap slab recycling") {
-    // 2-bit version (max 3), 8-bit index, 2 slots per slab
-    SlotMap<Key<8, 2, 0, int>> map(2);
-
-    SUBCASE("exhausted slab is recycled") {
-        // Use up all versions for first 2 slots (slab 0)
-        for (int round = 0; round < 3; ++round) {
-            auto k1 = map.emplace(1);
-            auto k2 = map.emplace(2);
-            CHECK(k1.index() == 0);
-            CHECK(k2.index() == 1);
-            map.erase(k1);
-            map.erase(k2);
-        }
-
-        // Now slab 0 is exhausted. Next emplace should use slab 1 indices
-        auto k = map.emplace(99);
-        CHECK(k.index() >= 2);  // From a new/recycled slab
-    }
-}
-```
-
 ### Property-Based Tests (rapidcheck)
 
 Look at `AtFork_ut.cpp`, `SymbolTable_ut.cpp`, and `MmapAlloc_ut.cpp` in `wjh_ipc/src/wjh/ipc/tests/` for rapidcheck example usage.
@@ -1194,153 +992,6 @@ RC_GTEST_PROP(SlotMap, insert_find_roundtrip, ()) {
         RC_ASSERT(found == values[i]);
     }
 }
-
-RC_GTEST_PROP(SlotMap, erase_invalidates_key, ()) {
-    SlotMap<Key<16, 16, 0, int>> map;
-    auto value = *rc::gen::arbitrary<int>();
-
-    auto key = map.emplace(value);
-    RC_ASSERT(map.contains(key));
-
-    map.erase(key);
-    RC_ASSERT(!map.contains(key));
-}
-
-RC_GTEST_PROP(SlotMap, for_each_visits_all_alive, ()) {
-    SlotMap<Key<16, 16, 0, int>> map;
-    auto values = *rc::gen::container<std::vector<int>>(rc::gen::arbitrary<int>());
-
-    for (auto v : values) {
-        map.emplace(v);
-    }
-
-    size_t count = 0;
-    map.for_each([&](auto, int&, break_t&) { ++count; });
-
-    RC_ASSERT(count == values.size());
-}
-
-RC_GTEST_PROP(SlotMap, size_tracks_alive_elements, ()) {
-    SlotMap<Key<16, 16, 0, int>> map;
-    auto ops = *rc::gen::container<std::vector<bool>>(rc::gen::arbitrary<bool>());
-
-    std::vector<Key<16, 16, 0, int>> keys;
-    size_t expected_size = 0;
-
-    for (bool should_insert : ops) {
-        if (should_insert || keys.empty()) {
-            keys.push_back(map.emplace(*rc::gen::arbitrary<int>()));
-            ++expected_size;
-        } else {
-            auto idx = *rc::gen::inRange<size_t>(0, keys.size());
-            if (map.erase(keys[idx])) {
-                --expected_size;
-            }
-        }
-    }
-
-    RC_ASSERT(map.size() == expected_size);
-}
-
-RC_GTEST_PROP(SlotMap, copy_is_independent, ()) {
-    SlotMap<Key<16, 16, 0, int>> map;
-    auto values = *rc::gen::container<std::vector<int>>(rc::gen::arbitrary<int>());
-
-    std::vector<Key<16, 16, 0, int>> keys;
-    for (auto v : values) {
-        keys.push_back(map.emplace(v));
-    }
-
-    auto copy = map;
-
-    // Erase from original
-    for (auto k : keys) {
-        map.erase(k);
-    }
-
-    // Copy should still have all elements
-    RC_ASSERT(map.is_empty());
-    RC_ASSERT(copy.size() == values.size());
-    for (auto k : keys) {
-        RC_ASSERT(copy.contains(k));
-    }
-}
-```
-
-### Static Assertions
-
-```cpp
-// In SlotMap.hpp or a test file
-static_assert(std::is_default_constructible_v<SlotMap<Key<16, 16, 0, int>>>);
-static_assert(std::is_copy_constructible_v<SlotMap<Key<16, 16, 0, int>>>);
-static_assert(std::is_copy_assignable_v<SlotMap<Key<16, 16, 0, int>>>);
-static_assert(std::is_move_constructible_v<SlotMap<Key<16, 16, 0, int>>>);
-static_assert(std::is_move_assignable_v<SlotMap<Key<16, 16, 0, int>>>);
-static_assert(std::is_nothrow_move_constructible_v<SlotMap<Key<16, 16, 0, int>>>);
-static_assert(std::is_nothrow_move_assignable_v<SlotMap<Key<16, 16, 0, int>>>);
-
-// Non-copyable value type
-struct NonCopyable {
-    NonCopyable() = default;
-    NonCopyable(NonCopyable const&) = delete;
-    NonCopyable(NonCopyable&&) = default;
-};
-
-static_assert(!std::is_copy_constructible_v<SlotMap<Key<16, 16, 0, NonCopyable>>>);
-static_assert(std::is_move_constructible_v<SlotMap<Key<16, 16, 0, NonCopyable>>>);
-
-// Non-moveable value type
-struct NonMoveable {
-    NonMoveable() = default;
-    NonMoveable(NonMoveable const&) = default;
-    NonMoveable(NonMoveable&&) = delete;
-};
-
-// pop() should not be available for non-moveable types
-// (Implementation would use requires clause or SFINAE)
-```
-
-### Bit Configuration Tests
-
-```cpp
-TEST_CASE("SlotMap with various bit configurations") {
-    SUBCASE("32-bit key (16/16/0)") {
-        SlotMap<Key<16, 16, 0, int>> map;
-        auto key = map.emplace(42);
-        CHECK(sizeof(key) == 4);
-        CHECK(map.contains(key));
-    }
-
-    SUBCASE("64-bit key (32/32/0)") {
-        SlotMap<Key<32, 32, 0, int>> map;
-        auto key = map.emplace(42);
-        CHECK(sizeof(key) == 8);
-        CHECK(map.contains(key));
-    }
-
-    SUBCASE("64-bit key with user bits (20/20/24)") {
-        SlotMap<Key<20, 20, 24, int>> map;
-        auto key = map.emplace(42);
-        CHECK(sizeof(key) == 8);
-        CHECK(map.contains(key));
-        CHECK(key.user() == 0);  // User bits default to 0
-    }
-
-    SUBCASE("minimal key (1/1/0 in 32 bits with padding)") {
-        // 1-bit index = 1 usable slot (0), null_index = 1
-        // 1-bit version = versions 0,1; max_version = 1
-        // This is pathological but should work
-        SlotMap<Key<1, 1, 30, int>> map(1);
-        auto key = map.emplace(42);
-        CHECK(key.index() == 0);
-        CHECK(key.version() == 1);
-
-        map.erase(key);  // Version becomes max (1), slot is dead
-
-        auto key2 = map.emplace(99);
-        CHECK(key2.is_null());  // No more slots
-    }
-}
 ```
 
 ---
@@ -1349,7 +1000,7 @@ TEST_CASE("SlotMap with various bit configurations") {
 
 ### Phase 1: Core Infrastructure ✅ COMPLETED
 
-- [x] Create `src/wjh/slotmap/detail/Slot.hpp`
+- [x] Create `src/wjh/slotmap/detail/Slot.hpp` and `Slot.ipp`
   - [x] Slot class with byte array storage (not union - avoids UB)
   - [x] Version byte array storage
   - [x] `emplace()`, `destroy()`, `value()` methods
@@ -1361,75 +1012,119 @@ TEST_CASE("SlotMap with various bit configurations") {
   - [x] Uses `std::launder` for proper pointer provenance
   - [x] Tests in `src/wjh/slotmap/tests/Slot_ut.cpp`
 
-- [x] Create `src/wjh/slotmap/detail/Slab.hpp`
+- [x] Create `src/wjh/slotmap/detail/Slab.hpp` and `Slab.ipp`
   - [x] Slab class with flexible array pattern (slots after header)
   - [x] Factory method `Slab::create(slots_per_slab)` returns `std::unique_ptr<Slab>`
-  - [x] Dead count tracking (`dead_count()`, `increment_dead_count()`, `reset_dead_count()`)
+  - [x] **Alive bitmap** for tracking which slots have values
+  - [x] `emplace()` method that sets alive bit and returns version
+  - [x] `destroy()` method that clears alive bit, increments version, tracks dead count
+  - [x] `is_alive()` method for O(1) alive checking
+  - [x] `can_be_recycled()` and `recycle()` methods
   - [x] Proper alignment via `alignas()` on class
   - [x] Uses `std::launder` for slot array access
-  - [x] All forms of `operator new` deleted (except placement used internally)
   - [x] Private constructor enforces use of `create()`
   - [x] Non-copyable, non-movable
   - [x] Tests in `src/wjh/slotmap/tests/Slab_ut.cpp`
 
 **Implementation Notes from Phase 1:**
 - Slot uses `std::array<std::byte, ...>` for storage instead of union to avoid union-related UB
-- Slab uses flexible array member pattern: header followed by contiguous slot array
+- Slab uses flexible array member pattern: header followed by contiguous slot array, then alive bitmap
 - `std::launder` is used in both classes for correct pointer provenance after placement new
-- Property-based tests use `rc::check("description", []() { ... })` pattern (see wjh_ipc for examples)
+- Property-based tests use `rc::check("description", []() { ... })` pattern
+- **Slot uses `size_type` for next-link** to allow storing `end_of_free_list` sentinel
+
+---
+
+### Phase 2: Basic SlotMap ✅ COMPLETED
+
+- [x] Create `src/wjh/slotmap/SlotMap.hpp` and `SlotMap.ipp`
+  - [x] Template for `KeyT` with `is_key_v<KeyT>` static_assert
+  - [x] Type aliases using strong types from Key
+  - [x] Member variables (slabs vector, free list, size, etc.)
+  - [x] `end_of_free_list` constant (`2^IndexBits`, one past max index)
+  - [x] `free_list_head_` uses `size_type` to hold sentinel
+  - [x] Default constructor with slab size heuristic
+  - [x] Explicit slab size constructor with power-of-2 validation
+  - [x] Move constructor and move assignment (noexcept)
+  - [x] `is_empty()` and `size()` capacity methods
+  - [x] `get_slot()` helper method
+  - [x] `clear_slabs()` helper method
+  - [x] Tests in `src/wjh/slotmap/tests/SlotMap_ut.cpp`
+
+**Implementation Notes from Phase 2:**
+- **All indices are usable**: No index wasted as sentinel (unlike original design)
+- `size_type` has `IndexBits + 1` bits, allowing it to hold `2^IndexBits`
+- `end_of_free_list = 2^IndexBits` serves as free list sentinel
+- Slab's `slot_type` uses `size_type` for next-link to store sentinel
+- `Slab::recycle()` takes `size_type last_next` to handle sentinel
+- Strong types (`index_type`, `size_type`, etc.) used throughout for type safety
 
 ---
 
 ## 🚀 RESUME HERE - Next Agent Instructions
 
-**Status:** Phase 1 is complete. Begin Phase 2.
+**Status:** Phase 2 is complete. Begin Phase 3.
 
 **What's done:**
-- `src/wjh/slotmap/detail/Slot.hpp` - Complete with tests
-- `src/wjh/slotmap/detail/Slab.hpp` - Complete with tests
+- `src/wjh/slotmap/detail/Slot.hpp` / `Slot.ipp` - Complete with tests
+- `src/wjh/slotmap/detail/Slab.hpp` / `Slab.ipp` - Complete with tests (includes alive bitmap, emplace, destroy)
+- `src/wjh/slotmap/SlotMap.hpp` / `SlotMap.ipp` - Basic structure complete with tests
 - Tests pass: `ctest --output-on-failure --test-dir build`
 
+**Key design decisions to understand:**
+
+1. **Strong types everywhere**: `index_type`, `version_type`, `size_type` are all strong types with `.value` member. Use them consistently.
+
+2. **`size_type` has IndexBits+1 bits**: This allows storing `end_of_free_list = 2^IndexBits` which is the free list sentinel.
+
+3. **Slot uses `size_type` for next-link**: So it can store the sentinel. When reading from slot, you get `size_type`; when checking for end-of-list, compare with `end_of_free_list`.
+
+4. **Slab manages lifecycle**: `Slab::emplace(index, args...)` and `Slab::destroy(index)` handle the alive bitmap and version management. SlotMap should use these, not access slots directly for lifecycle.
+
+5. **All indices usable**: Indices 0 through `2^IndexBits - 1` can all store values. None are reserved.
+
 **Next steps:**
-1. Read this DESIGN.md thoroughly for the SlotMap API specification
-2. Begin Phase 2: Create `src/wjh/slotmap/SlotMap.hpp`
+1. Read this DESIGN.md thoroughly
+2. Begin Phase 3: Implement `emplace()`, `erase()`, `use()`, `contains()`
 3. Follow the coding standards in CLAUDE.md
-4. Build: `cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DWJH_SLOTMAP_BUILD_TESTS=ON -DWJH_SLOTMAP_SANITIZE=ON && cmake --build build`
+4. Build: `cmake --build build`
 5. Test: `ctest --output-on-failure --test-dir build`
 
-**Key implementation details from Phase 1 to be aware of:**
-- `Slab::create(n)` is the only way to construct a Slab (returns `std::unique_ptr<Slab>`)
-- Slot is trivially default constructible; use `Slot{}` for zero-init or `Slot(next_index)` for FREE state
-- Both use `std::launder` for pointer access - follow the same pattern in SlotMap
+**Files to modify:**
+- `src/wjh/slotmap/SlotMap.hpp` - Add method declarations
+- `src/wjh/slotmap/SlotMap.ipp` - Add implementations
+- `src/wjh/slotmap/tests/SlotMap_ut.cpp` - Add tests
 
 ---
-
-### Phase 2: Basic SlotMap
-
-- [ ] Create `src/wjh/slotmap/SlotMap.hpp`
-  - [ ] Template specialization for `Key<...>`
-  - [ ] Type aliases
-  - [ ] Member variables (slabs vector, free list, size, etc.)
-  - [ ] Default constructor with slab size heuristic
-  - [ ] Explicit slab size constructor with power-of-2 validation
 
 ### Phase 3: Core Operations
 
 - [ ] Implement `emplace()`
-  - [ ] Free list allocation
-  - [ ] New slab allocation when needed
-  - [ ] Version management (start at 1)
-  - [ ] Exception safety
+  - [ ] Check if free list empty, allocate new slab if needed
+  - [ ] Pop from free list (handle `end_of_free_list` sentinel)
+  - [ ] Use `Slab::emplace()` which handles alive bit and returns version
+  - [ ] Build and return key with index, version, user=0
+  - [ ] Increment size
+  - [ ] Exception safety: if construction fails, slot stays in free list
 
 - [ ] Implement `erase()`
-  - [ ] Key validation
-  - [ ] Value destruction
-  - [ ] Version increment
-  - [ ] Free list return OR dead count increment
-  - [ ] Slab recycling trigger
+  - [ ] Key validation (null check, bounds check, version match, alive check)
+  - [ ] Use `Slab::destroy()` which handles alive bit, version increment, dead count
+  - [ ] If `destroy()` returns true: add to free list
+  - [ ] If `destroy()` returns false: slot is dead, check for slab recycling
+  - [ ] Decrement size
+  - [ ] Return true on success
 
 - [ ] Implement `use()` and `contains()`
-  - [ ] Key validation logic
-  - [ ] Null key fast path
+  - [ ] Key validation logic (same as erase)
+  - [ ] Null key fast path (return false immediately)
+  - [ ] For `use()`: invoke callable with value reference
+  - [ ] For `contains()`: just return validation result
+
+- [ ] Implement `allocate_new_slab()` helper
+  - [ ] Check if `next_slab_base_index_ >= end_of_free_list`
+  - [ ] Create slab, initialize free list links
+  - [ ] Update slabs vector, next_slab_base_index_
 
 - [ ] Tests for all public interfaces
 
@@ -1438,56 +1133,39 @@ TEST_CASE("SlotMap with various bit configurations") {
 - [ ] Implement `for_each()`
   - [ ] Iterate over slabs
   - [ ] Skip nullptr slabs
-  - [ ] Skip dead/free slots (check version > 0 and slot is alive)
+  - [ ] Use `Slab::is_alive()` to find alive slots
+  - [ ] Build key from index + version for callback
   - [ ] Early exit support with `break_t`
 
 - [ ] Implement `clear()`
-  - [ ] Destroy all alive values
+  - [ ] Iterate and destroy all alive values (use bitmap)
   - [ ] Increment all versions
   - [ ] Rebuild free list
+  - [ ] Reset size to 0
 
 - [ ] Implement `reset()`
-  - [ ] Destroy all values
-  - [ ] Deallocate all slabs
-  - [ ] Re-initialize to default state
+  - [ ] Clear all slabs
+  - [ ] Reset to initial state
 
 - [ ] Tests for all public interfaces
 
 ### Phase 5: Copy/Move Operations
 
-- [ ] Implement copy constructor
-  - [ ] Deep copy all slabs
-  - [ ] Preserve structure exactly
-
+- [ ] Move operations already implemented ✅
+- [ ] Implement copy constructor (if T is copyable)
 - [ ] Implement copy assignment (copy-and-swap)
-
-- [ ] Implement move constructor
-
-- [ ] Implement move assignment
-
 - [ ] Implement `swap()`
-
 - [ ] Tests for all public interfaces
 
 ### Phase 6: Additional Features
 
 - [ ] Implement `pop()`
-  - [ ] SFINAE for move-constructible types
-  - [ ] Move value out before destroying
-
 - [ ] Implement `reserve()`
-  - [ ] Pre-allocate slabs
-
-- [ ] Implement slab recycling
-  - [ ] Detect exhausted slab
-  - [ ] Move to next index range
-  - [ ] Handle "no more room" case
-
+- [ ] Implement slab recycling (in erase when slab becomes exhausted)
 - [ ] Tests for all public interfaces
 
 ### Phase 7: Testing
 
-- [ ] Unit tests for all public API
 - [ ] Property-based tests with rapidcheck
 - [ ] Exception safety tests
 - [ ] Edge case tests (1-bit fields, capacity limits)
@@ -1501,7 +1179,7 @@ TEST_CASE("SlotMap with various bit configurations") {
 
 2. **Custom Allocators**: PMR support can be added by storing `memory_resource*` and using it for slab allocation.
 
-3. **Iteration Performance**: Consider adding a "alive bitmap" per slab for faster iteration over sparse slabs.
+3. **Iteration Performance**: Alive bitmap already added for efficient iteration over sparse slabs.
 
 4. **Bulk Erase**: Could add `erase_if(predicate)` that's more efficient than individual erases.
 

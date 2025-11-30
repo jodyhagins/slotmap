@@ -165,13 +165,13 @@ struct TypeBase
         return x.value == y;
     }
 
-    DerivedT & operator ++ ()
+    constexpr DerivedT & operator ++ ()
     {
         ++value;
         return static_cast<DerivedT &>(*this);
     }
 
-    DerivedT operator ++ (int)
+    constexpr DerivedT operator ++ (int)
     {
         auto result = value;
         ++value;

@@ -35,7 +35,7 @@ SlotMap(SlotMap && other) noexcept
 , log2_slots_per_slab_{other.log2_slots_per_slab_}
 , next_slab_base_index_{other.next_slab_base_index_}
 {
-    other.free_list_head_ = null_index;
+    other.free_list_head_ = end_of_free_list;
     other.size_ = 0;
     other.next_slab_base_index_ = 0;
 }
@@ -56,7 +56,7 @@ operator = (SlotMap && other) noexcept
         log2_slots_per_slab_ = other.log2_slots_per_slab_;
         next_slab_base_index_ = other.next_slab_base_index_;
 
-        other.free_list_head_ = null_index;
+        other.free_list_head_ = end_of_free_list;
         other.size_ = 0;
         other.next_slab_base_index_ = 0;
     }
@@ -84,11 +84,7 @@ constexpr SlotMap<KeyT>::size_type
 SlotMap<KeyT>::
 compute_default_slab_size() noexcept
 {
-    constexpr size_type max_slots = [] {
-        auto result = size_type(null_index);
-        result.value += 1;
-        return result;
-    }();
+    constexpr size_type max_slots = end_of_free_list;
 
     // Use a single slab by default if it fits in 2MB.
     constexpr std::size_t limit = 2 * 1024 * 1024;
@@ -123,12 +119,10 @@ validate_slab_size(size_type slots_per_slab)
     }
 
     // Ensure slab size doesn't exceed the addressable index space
-    // (null_index is reserved, so max usable is null_index - 1 + 1 =
-    // null_index slots)
-    if (slots_per_slab > naked_size_type(null_index.value) + 1) {
+    if (slots_per_slab > end_of_free_list) {
         std::stringstream strm;
         strm << "SlotMap: slots_per_slab (" << slots_per_slab.value
-            << ") exceeds maximum index value (" << null_index.value << ")";
+            << ") exceeds maximum size (" << end_of_free_list.value << ")";
         throw std::invalid_argument(strm.str());
     }
 }
@@ -159,7 +153,7 @@ SlotMap<KeyT>::
 clear_slabs() noexcept
 {
     slabs_.clear();
-    free_list_head_ = null_index;
+    free_list_head_ = end_of_free_list;
     size_ = 0;
     next_slab_base_index_ = 0;
 }
