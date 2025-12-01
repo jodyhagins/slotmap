@@ -18,19 +18,6 @@ Slot(index_type next)
     set_next(next);
 }
 
-template <typename VersionT>
-constexpr bool
-has_alive_bit()
-{
-#ifdef WJH_SLOTMAP_DEBUG_MODE
-    constexpr auto version_digits =
-        std::numeric_limits<typename VersionT::value_type>::digits;
-    return VersionT::num_bits < version_digits;
-#else
-    return false;
-#endif
-}
-
 template <typename T, typename IndexT, typename VersionT>
 constexpr Slot<T, IndexT, VersionT>::version_type
 Slot<T, IndexT, VersionT>::
@@ -176,7 +163,7 @@ set_alive()
 template <typename T, typename IndexT, typename VersionT>
 constexpr bool
 Slot<T, IndexT, VersionT>::
-is_alive() const
+is_alive() const noexcept
 {
     if constexpr (has_alive_bit<version_type>()) {
         auto version = std::bit_cast<naked_version_type>(version_bytes_);

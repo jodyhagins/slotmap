@@ -427,6 +427,33 @@ invoke_use(F & func, [[maybe_unused]] KeyT key, ValT & val, OptTs &... opts)
 
 } // namespace detail
 
+namespace detail {
+
+/**
+ * Check if a slot is alive using the optimal method for the slot type.
+ *
+ * When the slot has an embedded alive bit (non-power-of-2 version bits),
+ * read directly from the slot for cache locality. Otherwise, use the bitmap.
+ *
+ * This should only be used in cases where just the slot is accessed.
+ */
+template <typename SlotT, typename SlabT, typename IndexT>
+[[nodiscard]]
+constexpr bool
+check_slot_alive_bit(
+    SlotT const & slot,
+    SlabT const * slab,
+    IndexT index) noexcept
+{
+    if constexpr (SlotT::has_embedded_alive_bit) {
+        return slot.is_alive();
+    } else {
+        return slab->is_alive(index);
+    }
+}
+
+} // namespace detail
+
 template <typename KeyT>
 bool
 SlotMap<KeyT>::
@@ -437,7 +464,8 @@ use(auto & self, key_type key, auto & func)
         auto const slot_idx = index_type(
             naked_index_type(key_idx.value & (self.slots_per_slab_ - 1)));
         if (auto & slot = slab->slot(slot_idx);
-            slot.version() == key.version() && slab->is_alive(slot_idx))
+            slot.version() == key.version() &&
+            check_slot_alive_bit(slot, slab, slot_idx))
         {
             auto & value = slot.value();
 

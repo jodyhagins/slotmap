@@ -48,8 +48,8 @@ struct LargeValue
 // ============================================================================
 
 // For ~100 elements: 8 index bits = 256 max slots, 24 version bits
-using SmallKey100 = wjh::slotmap::Key<SmallValue, 8, 24>;
-using LargeKey100 = wjh::slotmap::Key<LargeValue, 8, 24>;
+using SmallKey100 = wjh::slotmap::Key<SmallValue, 7, 25>;
+using LargeKey100 = wjh::slotmap::Key<LargeValue, 7, 25>;
 
 // For ~1000 elements: 10 index bits = 1024 max slots, 22 version bits
 using SmallKey1K = wjh::slotmap::Key<SmallValue, 10, 22>;
@@ -60,8 +60,8 @@ using SmallKey4K = wjh::slotmap::Key<SmallValue, 13, 19>;
 using LargeKey4K = wjh::slotmap::Key<LargeValue, 13, 19>;
 
 // For ~32K elements: 16 index bits = 65536 max slots, 16 version bits
-using SmallKey32K = wjh::slotmap::Key<SmallValue, 16, 16>;
-using LargeKey32K = wjh::slotmap::Key<LargeValue, 16, 16>;
+using SmallKey32K = wjh::slotmap::Key<SmallValue, 15, 17>;
+using LargeKey32K = wjh::slotmap::Key<LargeValue, 15, 17>;
 
 // For ~262K elements: 18 index bits = 262144 max slots, 14 version bits
 // Using 64-bit key to fit 18+14=32... wait, that's 32. Let's use 32-bit.

@@ -11,11 +11,27 @@
 #include <cassert>
 #include <cstddef>
 #include <cstring>
+#include <limits>
 #include <new>
 #include <type_traits>
 #include <utility>
 
 namespace wjh::slotmap::detail {
+
+/**
+ * Check if a version type has spare bits that can be used for an alive bit.
+ *
+ * @tparam VersionT A type with static members num_bits and value_type.
+ * @return true if num_bits < std::numeric_limits<value_type>::digits
+ */
+template <typename VersionT>
+constexpr bool
+has_alive_bit()
+{
+    constexpr auto version_digits =
+        std::numeric_limits<typename VersionT::value_type>::digits;
+    return VersionT::num_bits < version_digits;
+}
 
 /**
  * A slot in the slot map, containing either a value (when alive) or
@@ -106,6 +122,29 @@ public:
     [[nodiscard]]
     constexpr T const & value() const noexcept;
 
+    // ========================================================================
+    // Alive bit support
+    // ========================================================================
+
+    /**
+     * Whether this slot type has an embedded alive bit.
+     *
+     * When true, is_alive() can be used to check slot status without
+     * accessing the slab's bitmap, improving cache locality.
+     */
+    static constexpr bool has_embedded_alive_bit =
+        detail::has_alive_bit<version_type>();
+
+    /**
+     * Check if the slot is alive (has a constructed value).
+     *
+     * @note When has_embedded_alive_bit is true, this reads from the
+     *       version_bytes_ field (same cache line as the slot). When false,
+     *       it always returns true and the slab's bitmap must be consulted.
+     */
+    [[nodiscard]]
+    constexpr bool is_alive() const noexcept;
+
 private:
     // Storage for either index_type or T
     alignas(std::max(alignof(index_type), alignof(T)))
@@ -123,7 +162,6 @@ private:
     constexpr void set_free();
     constexpr bool is_free() const;
     constexpr void set_alive();
-    constexpr bool is_alive() const;
 
     using naked_version_type = typename version_type::value_type;
     static constexpr auto version_digits =

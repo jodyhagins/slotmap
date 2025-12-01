@@ -50,7 +50,7 @@ struct Value
 // ============================================================================
 
 // For ~100 elements: 8 index bits = 256 max slots
-using Key100 = wjh::slotmap::Key<Value, 8, 24>;
+using Key100 = wjh::slotmap::Key<Value, 7, 25>;
 using SlotMap100 = wjh::SlotMap<Key100>;
 
 // For ~1000 elements: 10 index bits = 1024 max slots
@@ -62,7 +62,7 @@ using Key4K = wjh::slotmap::Key<Value, 13, 19>;
 using SlotMap4K = wjh::SlotMap<Key4K>;
 
 // For ~32K elements: 16 index bits = 65536 max slots
-using Key32K = wjh::slotmap::Key<Value, 16, 16>;
+using Key32K = wjh::slotmap::Key<Value, 15, 17>;
 using SlotMap32K = wjh::SlotMap<Key32K>;
 
 // For ~262K and 1M elements: 20 index bits = 1048576 max slots
