@@ -425,6 +425,13 @@ invoke_use(F & func, [[maybe_unused]] KeyT key, ValT & val, OptTs &... opts)
     }
 }
 
+template <typename SelfT, typename F, typename KeyT, typename ValT>
+inline constexpr bool use_callback_wants_options =
+    not std::is_const_v<std::remove_reference_t<SelfT>> &&
+    (std::is_invocable_v<F, KeyT, ValT, Options &> ||
+     std::is_invocable_v<F, ValT, Options &>);
+
+
 } // namespace detail
 
 namespace detail {
@@ -459,6 +466,9 @@ bool
 SlotMap<KeyT>::
 use(auto & self, key_type key, auto & func)
 {
+    using detail::use_callback_wants_options;
+    using SelfT = std::remove_reference_t<decltype(self)>;
+    using FuncT = decltype(func);
     auto const key_idx = key.index();
     if (auto * slab = self.get_slab(key_idx)) {
         auto const slot_idx = index_type(
@@ -468,9 +478,10 @@ use(auto & self, key_type key, auto & func)
             check_slot_alive_bit(slot, slab, slot_idx))
         {
             auto & value = slot.value();
+            using ValT = decltype(value);
 
-            using SelfT = std::remove_reference_t<decltype(self)>;
-            if constexpr (not std::is_const_v<SelfT>) {
+            if constexpr (use_callback_wants_options<SelfT, FuncT, KeyT, ValT>)
+            {
                 // Invoke the callable with Options support
                 Options opts{};
                 detail::invoke_use(func, key, value, opts);
