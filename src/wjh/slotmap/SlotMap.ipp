@@ -544,44 +544,37 @@ for_each(auto & self, auto & func)
         auto const base_idx = static_cast<naked_index_type>(
             slab_idx << self.log2_slots_per_slab_);
 
-        // Iterate over slots in this slab
-        for (naked_size_type slot_idx = 0;
-             slot_idx < self.slots_per_slab_ && not options.stop;
-             ++slot_idx)
-        {
-            auto const idx = index_type(
-                static_cast<naked_index_type>(slot_idx));
+        // Use bitmap-scanning iteration for efficiency
+        slab->for_each_alive([&](index_type slot_idx) -> bool {
+            // Build the key from index + version
+            auto const full_idx = index_type(
+                static_cast<naked_index_type>(base_idx + slot_idx.value));
+            auto const ver = slab->slot(slot_idx).version();
+            auto const key = key_type(full_idx, ver, user_type{});
+            auto & val = slab->slot(slot_idx).value();
 
-            if (slab->is_alive(idx)) {
-                // Build the key from index + version
-                auto const full_idx = index_type(
-                    static_cast<naked_index_type>(base_idx + slot_idx));
-                auto const ver = slab->slot(idx).version();
-                auto const key = key_type(full_idx, ver, user_type{});
-                auto & val = slab->slot(idx).value();
+            using R = decltype(
+                detail::invoke_for_each(func, key, val, options));
+            static_assert(
+                std::is_void_v<R> || std::is_same_v<R, bool>,
+                "for_each callback must return void or bool");
 
-                using R = decltype(
-                    detail::invoke_for_each(func, key, val, options));
-                static_assert(
-                    std::is_void_v<R> || std::is_same_v<R, bool>,
-                    "for_each callback must return void or bool");
-
-                if constexpr (std::is_void_v<R>) {
-                    detail::invoke_for_each(func, key, val, options);
-                } else if (not detail::invoke_for_each(func, key, val, options))
-                {
-                    options.stop = true;
-                }
-                ++visited;
-
-                if constexpr (std::is_const_v<SelfT>) {
-                    assert(not options.erase);
-                } else if (options.erase) {
-                    self.erase(key);
-                    options.erase = false;
-                }
+            if constexpr (std::is_void_v<R>) {
+                detail::invoke_for_each(func, key, val, options);
+            } else if (not detail::invoke_for_each(func, key, val, options)) {
+                options.stop = true;
             }
-        }
+            ++visited;
+
+            if constexpr (std::is_const_v<SelfT>) {
+                assert(not options.erase);
+            } else if (options.erase) {
+                self.erase(key);
+                options.erase = false;
+            }
+
+            return not options.stop;
+        });
     }
 
     return size_type(visited);

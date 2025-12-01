@@ -9,6 +9,7 @@
 
 #include "Slot.hpp"
 
+#include <bit>
 #include <cassert>
 #include <cstddef>
 #include <cstring>
@@ -143,13 +144,15 @@ template <typename T, typename IndexT, typename VersionT, typename SizeT>
 Slab<T, IndexT, VersionT, SizeT>::
 ~Slab()
 {
-    // Destroy all alive slots
-    auto * const slots = this->slots();
+    auto * const slot_array = this->slots();
+
+    // Destroy all alive values using bitmap scanning
+    for_each_alive([slot_array](index_type idx) { slot_array[idx].destroy(); });
+
+    // Destroy all slot objects
+    // Note: If slot_type is trivially destructible, this loop optimizes away
     for (naked_size_type i = 0; i < slots_per_slab_; ++i) {
-        if (is_alive(index_type(naked_index_type(i)))) {
-            slots[i].destroy();
-        }
-        slots[i].~slot_type();
+        slot_array[i].~slot_type();
     }
 }
 
@@ -208,6 +211,88 @@ is_alive(index_type index) const noexcept
     auto const byte_idx = static_cast<std::size_t>(index) / 8;
     auto const bit_idx = static_cast<unsigned>(index % 8);
     return (bitmap()[byte_idx] & (std::byte{1} << bit_idx)) != std::byte{0};
+}
+
+template <typename T, typename IndexT, typename VersionT, typename SizeT>
+template <typename F>
+Slab<T, IndexT, VersionT, SizeT>::size_type
+Slab<T, IndexT, VersionT, SizeT>::
+for_each_alive(F && func) const
+{
+    auto const * bm = bitmap();
+    auto const num_slots = slots_per_slab_;
+    naked_size_type visited = 0;
+
+    // Process bitmap in 64-bit chunks for efficiency
+    std::size_t slot_base = 0;
+    std::size_t const num_bytes = bitmap_size(size_type(num_slots));
+
+    // Process 8-byte (64-bit) chunks
+    std::size_t byte_idx = 0;
+    while (byte_idx + 8 <= num_bytes) {
+        // Load 64 bits from the bitmap
+        std::uint64_t word;
+        std::memcpy(&word, bm + byte_idx, sizeof(word));
+
+        while (word != 0) {
+            // Find the index of the lowest set bit
+            auto const bit_pos = static_cast<std::size_t>(
+                std::countr_zero(word));
+            auto const slot_idx = static_cast<naked_index_type>(
+                slot_base + bit_pos);
+
+            // Invoke callback
+            using R = decltype(func(index_type(slot_idx)));
+            if constexpr (std::is_same_v<R, bool>) {
+                if (not func(index_type(slot_idx))) {
+                    return size_type(visited);
+                }
+            } else {
+                func(index_type(slot_idx));
+            }
+            ++visited;
+
+            // Clear the lowest set bit
+            word &= word - 1;
+        }
+
+        byte_idx += 8;
+        slot_base += 64;
+    }
+
+    // Process remaining bytes one at a time
+    while (byte_idx < num_bytes) {
+        auto byte_val = static_cast<unsigned char>(bm[byte_idx]);
+
+        while (byte_val != 0) {
+            auto const bit_pos = static_cast<std::size_t>(
+                std::countr_zero(byte_val));
+            auto const slot_idx = static_cast<naked_index_type>(
+                slot_base + bit_pos);
+
+            // Don't process slots beyond slots_per_slab
+            if (slot_idx >= num_slots) {
+                break;
+            }
+
+            using R = decltype(func(index_type(slot_idx)));
+            if constexpr (std::is_same_v<R, bool>) {
+                if (not func(index_type(slot_idx))) {
+                    return size_type(visited);
+                }
+            } else {
+                func(index_type(slot_idx));
+            }
+            ++visited;
+
+            byte_val &= static_cast<unsigned char>(byte_val - 1);
+        }
+
+        ++byte_idx;
+        slot_base += 8;
+    }
+
+    return size_type(visited);
 }
 
 template <typename T, typename IndexT, typename VersionT, typename SizeT>

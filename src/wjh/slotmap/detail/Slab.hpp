@@ -134,6 +134,17 @@ public:
     [[nodiscard]]
     bool is_alive(index_type index) const noexcept;
 
+    /**
+     * Iterate over all alive slots.
+     *
+     * @param func Callback invoked for each alive slot with signature:
+     *             void(index_type slot_index) or
+     *             bool(index_type slot_index) - return false to stop
+     * @return Number of slots visited
+     */
+    template <typename F>
+    size_type for_each_alive(F && func) const;
+
     // ========================================================================
     // Slot access (for free-list management by SlotMap)
     // ========================================================================
