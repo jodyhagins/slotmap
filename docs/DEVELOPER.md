@@ -953,6 +953,60 @@ If copy succeeds:
 
 ---
 
+## use() Implementation
+
+The `use()` function supports multiple callable signatures via `detail::invoke_use`.
+
+### Non-const invoke_use
+
+This allows users to pass lambdas with any of these signatures:
+- `[](key_type k, T & v, Options & o) { ... }` - Full access with erase capability
+- `[](key_type k, T & v) { ... }` - Key and value
+- `[](T & v, Options & o) { ... }` - Value with erase capability
+- `[](T & v) { ... }` - Value only
+
+### Const invoke_use_const
+
+The const version is simpler because it doesn't support the `Options` parameter (since Options only has erase, which requires mutation).
+
+### Erase-After-Callback Pattern
+
+The non-const `use()` implements conditional erasure:
+
+```cpp
+template <typename F>
+bool use(key_type key, F && func) {
+    // Find the value to use...
+
+    if constexpr (/* non-const */) {
+        // Invoke the callable with Options support
+        Options opts{};
+        detail::invoke_use(func, key, slot.value(), opts);
+
+        // Erase after callback if requested
+        if (opts.erase) {
+            erase(key);
+        }
+
+        return true;
+    } else {
+        detail::invoke_use(func, key, slot.value());
+    }
+    return false;
+}
+```
+
+**Key Implementation Details:**
+
+1. **Options created before invocation**: An `Options` object is created with default values before calling the callback
+2. **Callback always invoked first**: The element is always accessible within the callback, even if erase is requested
+3. **Erase happens after return**: The erase only occurs AFTER the callback completes successfully
+4. **No erase on const**: The const overload uses `invoke_use_const` which doesn't accept Options
+
+This pattern ensures safe access - the callback can read/modify the element before it's erased, and if the callback throws an exception, the element is not erased (basic exception safety).
+
+---
+
 ## for_each Implementation
 
 The `for_each()` implementation handles multiple callable signatures via overload detection using `if constexpr` and `std::is_invocable_v`:

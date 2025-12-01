@@ -231,9 +231,34 @@ bool found = map.use(key, [](MyType & value) {
     // Modify value here
 });
 
-// Const access
+// Access with key parameter
+map.use(key, [](MyKey k, MyType & value) {
+    // Access both key and value
+});
+
+// Access with erase option
+map.use(key, [](MyType & value, wjh::slotmap::Options & opts) {
+    if (should_remove(value)) {
+        opts.erase = true;  // Element erased after callback
+    }
+});
+
+// Full signature with key, value, and options
+map.use(key, [](MyKey k, MyType & value, wjh::slotmap::Options & opts) {
+    process(k, value);
+    if (needs_removal(value)) {
+        opts.erase = true;  // Conditional erase
+    }
+});
+
+// Const access (read-only)
 bool found = const_map.use(key, [](MyType const & value) {
     // Read-only access
+});
+
+// Const access with key parameter
+const_map.use(key, [](MyKey k, MyType const & value) {
+    // Read-only access to both key and value
 });
 ```
 

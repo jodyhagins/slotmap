@@ -1060,6 +1060,40 @@ players.use(k1, [](Player & p) {
 
 ### Element Access
 
+#### Options Struct
+
+```cpp
+struct Options {
+    bool erase = false;
+};
+```
+
+**Description:** Tag type for `use()` operations that allows the callback to request element erasure.
+
+**Members:**
+- `erase` - When set to `true`, the element will be erased after the callback returns.
+
+**Note:** `Options` is only available for non-const `use()`. The const version does not support the erase option since it cannot modify the map.
+
+**Example:**
+
+```cpp
+wjh::SlotMap<MyKey> map;
+auto key = map.emplace(42);
+
+// Conditional erase based on value
+map.use(key, [](int & value, wjh::slotmap::Options & opts) {
+    if (value < 0) {
+        opts.erase = true;  // Request erasure
+    }
+});
+
+// After the callback, if opts.erase was set to true, the element is erased
+assert(not map.contains(key));  // True if value was < 0
+```
+
+---
+
 #### use()
 
 ```cpp
@@ -1070,13 +1104,27 @@ template <typename F>
 bool use(key_type key, F && func) const;
 ```
 
-**Description:** Access an element by key. If the key is valid and refers to an alive element, invokes `func(element)` and returns `true`. Otherwise, returns `false` without calling `func`.
+**Description:** Access an element by key. If the key is valid and refers to an alive element, invokes the callback with the element and returns `true`. Otherwise, returns `false` without calling the callback.
 
 This is **the** primary way to access elements. It combines lookup and access into a single safe operation.
 
+**Non-const Callable Signatures:**
+
+The non-const `use()` supports multiple callback signatures:
+- `void(key_type, mapped_type &, Options &)` - Full access with key, value, and erase capability
+- `void(key_type, mapped_type &)` - Key and value
+- `void(mapped_type &, Options &)` - Value with erase capability
+- `void(mapped_type &)` - Value only
+
+**Const Callable Signatures:**
+
+The const `use()` supports read-only callbacks without Options (since Options only supports erase which can't work on const):
+- `void(key_type, mapped_type const &)` - Key and value (read-only)
+- `void(mapped_type const &)` - Value only (read-only)
+
 **Parameters:**
 - `key` - The key to look up.
-- `func` - Callable with signature `void(mapped_type &)` (non-const overload) or `void(mapped_type const &)` (const overload).
+- `func` - Callable with one of the signatures listed above.
 
 **Returns:**
 - `true` if the key was valid and `func` was called.
@@ -1087,13 +1135,17 @@ This is **the** primary way to access elements. It combines lookup and access in
 - The slot has been erased and reused (version mismatch).
 - The index is out of bounds (should never happen with keys from `emplace()`).
 
-**Example:**
+**Erase-After-Callback:**
+
+When using the non-const `use()` with an `Options &` parameter, the callback can request element erasure by setting `opts.erase = true`. The element will be erased AFTER the callback returns, ensuring the element is accessible within the callback.
+
+**Examples:**
 
 ```cpp
 wjh::SlotMap<MyKey> map;
 auto key = map.emplace(42);
 
-// Read-only access
+// Basic use: value only
 int value = 0;
 if (map.use(key, [&](int const & v) { value = v; })) {
     std::cout << "Value: " << value << '\n';  // 42
@@ -1101,10 +1153,35 @@ if (map.use(key, [&](int const & v) { value = v; })) {
     std::cerr << "Key is invalid\n";
 }
 
-// Modify element
-map.use(key, [](int & v) { v *= 2; });
+// Use with key parameter
+map.use(key, [](MyKey k, int & v) {
+    std::cout << "Key index: " << k.index().value << ", value: " << v << '\n';
+    v *= 2;
+});
+
+// Use with Options for conditional erase
+map.use(key, [](int & v, wjh::slotmap::Options & opts) {
+    if (v > 100) {
+        opts.erase = true;  // Request erasure after callback
+    }
+});
+
+// Full signature with all parameters
+map.use(key, [](MyKey k, int & v, wjh::slotmap::Options & opts) {
+    std::cout << "Processing key " << k.index().value << '\n';
+    if (v < 0) {
+        opts.erase = true;  // Erase negative values
+    }
+});
+
+// Const access (read-only)
 map.use(key, [](int const & v) {
-    assert(v == 84);  // Modified
+    std::cout << "Value: " << v << '\n';
+});
+
+// Const access with key parameter
+map.use(key, [](MyKey k, int const & v) {
+    std::cout << "Key: " << k.index().value << ", value: " << v << '\n';
 });
 
 // After erase, key becomes invalid
@@ -1126,6 +1203,18 @@ assert(not found);  // Key is stale, func not called
 if (not map.use(key, [](auto & elem) { elem.update(); })) {
     // Handle invalid key
 }
+```
+
+**Pattern: Conditional Erase**
+
+```cpp
+// Erase elements that meet a condition
+map.use(key, [](Player & p, wjh::slotmap::Options & opts) {
+    if (p.health <= 0) {
+        std::cout << p.name << " has been defeated!\n";
+        opts.erase = true;  // Remove from map
+    }
+});
 ```
 
 ---

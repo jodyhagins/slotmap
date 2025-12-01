@@ -391,17 +391,66 @@ requires std::is_move_constructible_v<mapped_type>
     return std::nullopt;
 }
 
+namespace detail {
+
+template <typename F, typename KeyT, typename ValT, typename... OptTs>
+void
+invoke_use(F & func, [[maybe_unused]] KeyT key, ValT & val, OptTs &... opts)
+{
+    if constexpr (std::is_invocable_v<F, KeyT, ValT &, OptTs &...>) {
+        std::invoke(func, key, val, opts...);
+    } else if constexpr (std::is_invocable_v<F, KeyT, ValT &>) {
+        std::invoke(func, key, val);
+    } else if constexpr (std::is_invocable_v<F, ValT &, OptTs &...>) {
+        std::invoke(func, val, opts...);
+    } else {
+        std::invoke(func, val);
+    }
+}
+
+} // namespace detail
+
+template <typename KeyT>
+bool
+SlotMap<KeyT>::
+use(auto & self, key_type key, auto & func)
+{
+    auto const key_idx = key.index();
+    if (auto * slab = self.get_slab(key_idx)) {
+        auto const slot_idx = index_type(
+            naked_index_type(key_idx.value & (self.slots_per_slab_ - 1)));
+        if (auto & slot = slab->slot(slot_idx);
+            slot.version() == key.version() && slab->is_alive(slot_idx))
+        {
+            auto & value = slot.value();
+
+            using SelfT = std::remove_reference_t<decltype(self)>;
+            if constexpr (not std::is_const_v<SelfT>) {
+                // Invoke the callable with Options support
+                Options opts{};
+                detail::invoke_use(func, key, value, opts);
+
+                // Erase after callback if requested
+                if (opts.erase) {
+                    self.erase(key);
+                }
+            } else {
+                detail::invoke_use(func, key, value);
+            }
+
+            return true;
+        }
+    }
+    return false;
+}
+
 template <typename KeyT>
 template <typename F>
 bool
 SlotMap<KeyT>::
 use(key_type key, F && func)
 {
-    return const_cast<SlotMap const &>(*this).use(
-        key,
-        [&func](mapped_type const & x) {
-            std::forward<F>(func)(const_cast<mapped_type &>(x));
-        });
+    return use(*this, key, func);
 }
 
 template <typename KeyT>
@@ -410,19 +459,7 @@ bool
 SlotMap<KeyT>::
 use(key_type key, F && func) const
 {
-    auto const key_idx = key.index();
-    if (auto const * slab = get_slab(key_idx)) {
-        auto const slot_idx = index_type(
-            naked_index_type(key_idx.value & (slots_per_slab_ - 1)));
-        if (auto & slot = slab->slot(slot_idx);
-            slot.version() == key.version() && slab->is_alive(slot_idx))
-        {
-            // Invoke the callable
-            std::forward<F>(func)(std::as_const(slot.value()));
-            return true;
-        }
-    }
-    return false;
+    return use(*this, key, func);
 }
 
 template <typename KeyT>

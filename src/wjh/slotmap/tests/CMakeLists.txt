@@ -55,6 +55,7 @@ add_slotmap_test(
     NAME "SlotMap Core"
     SOURCES
         SlotMap_ut.cpp
+        SlotMap_use_ut.cpp
 )
 
 add_slotmap_test(

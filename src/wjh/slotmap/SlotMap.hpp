@@ -31,6 +31,16 @@ struct Break
 };
 
 /**
+ * Options for use() operations.
+ *
+ * Set erase = true to erase the element after invoking the callback.
+ */
+struct Options
+{
+    bool erase = false;
+};
+
+/**
  * A high-performance slot map container with O(1) insertion, deletion,
  * and lookup using persistent unique keys.
  *
@@ -322,6 +332,7 @@ private:
     bool allocate_new_slab();
     void initialize_slab_free_list(slab_type * slab, index_type base);
     void try_recycle_slab(std::size_t slab_idx);
+    static bool use(auto & self, key_type key, auto & func);
 };
 
 } // namespace wjh::slotmap
