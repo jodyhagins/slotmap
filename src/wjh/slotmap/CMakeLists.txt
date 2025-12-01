@@ -28,3 +28,7 @@ if (WJH_SLOTMAP_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif ()
+
+if (WJH_SLOTMAP_BUILD_BENCHMARKS)
+    add_subdirectory(benchmarks)
+endif ()

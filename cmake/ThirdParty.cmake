@@ -25,3 +25,16 @@ if (WJH_SLOTMAP_BUILD_TESTS)
     )
     FetchContent_MakeAvailable(rapidcheck)
 endif ()
+
+if (WJH_SLOTMAP_BUILD_BENCHMARKS)
+    message(STATUS "Processing third-party Google Benchmark...")
+    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+    set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+            benchmark
+            GIT_REPOSITORY https://github.com/google/benchmark.git
+            GIT_TAG v1.9.1
+            SYSTEM
+    )
+    FetchContent_MakeAvailable(benchmark)
+endif ()
