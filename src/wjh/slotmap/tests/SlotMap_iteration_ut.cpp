@@ -6,6 +6,7 @@
 // ----------------------------------------------------------------------
 
 #include "wjh/slotmap/SlotMap.hpp"
+#include "wjh/slotmap/tests/slotmap_test_utils.hpp"
 
 #include <map>
 #include <set>
@@ -19,6 +20,7 @@
 namespace {
 using wjh::slotmap::Key;
 using wjh::slotmap::Options;
+using wjh::slotmap::test::validate_statistics;
 
 template <typename KeyT>
 class SlotMap
@@ -730,6 +732,8 @@ TEST_CASE("property-based clear invalidates all keys")
         for (auto key : keys) {
             RC_ASSERT(not map.contains(key));
         }
+
+        validate_statistics(map);
     });
 }
 
@@ -746,11 +750,14 @@ TEST_CASE("property-based reset returns to initial state")
         map.reset();
 
         RC_ASSERT(map.is_empty());
+        validate_statistics(map);
 
         // After reset, first emplace should get index 0 with version 1
         auto key = map.emplace(42);
         RC_ASSERT(key.index().value == 0);
         RC_ASSERT(key.version().value == 1);
+
+        validate_statistics(map);
     });
 }
 

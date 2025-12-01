@@ -31,6 +31,8 @@ SlotMap(SlotMap const & other)
 requires std::is_copy_constructible_v<mapped_type>
 : free_list_head_{other.free_list_head_}
 , size_{other.size_}
+, dead_slots_{other.dead_slots_}
+, objects_created_{other.objects_created_}
 , slots_per_slab_{other.slots_per_slab_}
 , log2_slots_per_slab_{other.log2_slots_per_slab_}
 , next_slab_base_index_{other.next_slab_base_index_}
@@ -68,12 +70,16 @@ SlotMap(SlotMap && other) noexcept
 : slabs_{std::move(other.slabs_)}
 , free_list_head_{other.free_list_head_}
 , size_{other.size_}
+, dead_slots_{other.dead_slots_}
+, objects_created_{other.objects_created_}
 , slots_per_slab_{other.slots_per_slab_}
 , log2_slots_per_slab_{other.log2_slots_per_slab_}
 , next_slab_base_index_{other.next_slab_base_index_}
 {
     other.free_list_head_ = end_of_free_list;
     other.size_ = 0;
+    other.dead_slots_ = 0;
+    other.objects_created_ = 0;
     other.next_slab_base_index_ = 0;
 }
 
@@ -89,12 +95,16 @@ operator = (SlotMap && other) noexcept
         slabs_ = std::move(other.slabs_);
         free_list_head_ = other.free_list_head_;
         size_ = other.size_;
+        dead_slots_ = other.dead_slots_;
+        objects_created_ = other.objects_created_;
         slots_per_slab_ = other.slots_per_slab_;
         log2_slots_per_slab_ = other.log2_slots_per_slab_;
         next_slab_base_index_ = other.next_slab_base_index_;
 
         other.free_list_head_ = end_of_free_list;
         other.size_ = 0;
+        other.dead_slots_ = 0;
+        other.objects_created_ = 0;
         other.next_slab_base_index_ = 0;
     }
     return *this;
@@ -191,6 +201,8 @@ clear_slabs() noexcept
     slabs_.clear();
     free_list_head_ = end_of_free_list;
     size_ = 0;
+    dead_slots_ = 0;
+    objects_created_ = 0;
     next_slab_base_index_ = 0;
 }
 
@@ -304,6 +316,7 @@ try_emplace(Args &&... args)
     // Update free list head (only after successful emplace)
     free_list_head_ = next;
     ++size_;
+    ++objects_created_;
 
     // TODO: allow user to set a default-user-type-value that gets used here.
     return key_type(idx, ver, user_type{});
@@ -345,7 +358,9 @@ erase(key_type key)
                 slot.set_next(free_list_head_);
                 free_list_head_ = size_type(key_idx);
             } else {
-                // Slot is dead - check if slab can be recycled
+                // Slot is dead - increment counter and check if slab can be
+                // recycled
+                ++dead_slots_;
                 try_recycle_slab(slab_idx);
             }
 
@@ -381,7 +396,9 @@ requires std::is_move_constructible_v<mapped_type>
                 slot.set_next(free_list_head_);
                 free_list_head_ = size_type(key_idx);
             } else {
-                // Slot is dead - check if slab can be recycled
+                // Slot is dead - increment counter and check if slab can be
+                // recycled
+                ++dead_slots_;
                 try_recycle_slab(slab_idx);
             }
 
@@ -579,6 +596,8 @@ swap(SlotMap & other) noexcept
     swap(slabs_, other.slabs_);
     swap(free_list_head_, other.free_list_head_);
     swap(size_, other.size_);
+    swap(dead_slots_, other.dead_slots_);
+    swap(objects_created_, other.objects_created_);
     swap(slots_per_slab_, other.slots_per_slab_);
     swap(log2_slots_per_slab_, other.log2_slots_per_slab_);
     swap(next_slab_base_index_, other.next_slab_base_index_);
@@ -618,6 +637,9 @@ clear()
                         base_idx + slot_idx);
                     slab->slot(idx).set_next(free_list_head_);
                     free_list_head_ = size_type(full_idx);
+                } else {
+                    // Slot became dead during clear
+                    ++dead_slots_;
                 }
             } else {
                 // Slot was already in free list - check if it's still usable
@@ -701,6 +723,74 @@ try_recycle_slab(std::size_t slab_idx)
     // Update bookkeeping
     free_list_head_ = size_type(new_base);
     next_slab_base_index_ += slots_per_slab_;
+}
+
+template <typename KeyT>
+SlotMap<KeyT>::statistics_type
+SlotMap<KeyT>::
+statistics() const noexcept
+{
+    statistics_type stats{};
+
+    // Configuration
+    stats.slots_per_slab = slots_per_slab_;
+    stats.max_slots = end_of_free_list.value; // 2^IndexBits
+
+    // max_objects = 2^IndexBits * 2^VersionBits - 1
+    // The -1 is because slot 0 starts at version 1 to avoid null key
+    constexpr auto max_version_count = std::size_t{1} << key_type::version_bits;
+    constexpr auto max_index_count = std::size_t{1} << key_type::index_bits;
+    stats.max_objects = max_index_count * max_version_count - 1;
+
+    // Slot accounting
+    stats.active_slots = size_;
+    stats.dead_slots = dead_slots_;
+    stats.allocated_slots = next_slab_base_index_;
+    stats.free_slots = stats.allocated_slots - stats.active_slots -
+        stats.dead_slots;
+    stats.unallocated_slots = stats.max_slots - stats.allocated_slots;
+
+    // Capacity metrics
+    stats.available_slots = stats.free_slots;
+    stats.remaining_slots = stats.max_slots - stats.dead_slots;
+
+    // Object lifetime metrics
+    stats.objects_created = objects_created_;
+    stats.objects_remaining = stats.max_objects - objects_created_;
+
+    // Slab metrics - count non-null slabs
+    stats.slab_vector_size = slabs_.size();
+    stats.slab_count = 0;
+    for (auto const & slab_ptr : slabs_) {
+        if (slab_ptr) {
+            ++stats.slab_count;
+        }
+    }
+
+    // Memory metrics
+    auto const bytes_per_slab = slab_type::total_bytes_needed(
+        size_type(slots_per_slab_));
+    stats.slab_memory_bytes = stats.slab_count * bytes_per_slab;
+    stats.vector_memory_bytes = slabs_.capacity() *
+        sizeof(std::unique_ptr<slab_type>);
+    stats.total_memory_bytes = stats.slab_memory_bytes +
+        stats.vector_memory_bytes;
+
+    // Derived metrics
+    stats.slot_utilization = stats.remaining_slots > 0
+        ? static_cast<double>(stats.active_slots) / stats.remaining_slots
+        : 0.0;
+    stats.dead_slot_ratio = stats.allocated_slots > 0
+        ? static_cast<double>(stats.dead_slots) / stats.allocated_slots
+        : 0.0;
+    stats.lifetime_exhaustion = stats.max_objects > 0
+        ? static_cast<double>(stats.objects_created) / stats.max_objects
+        : 0.0;
+    stats.bytes_per_object = stats.active_slots > 0
+        ? static_cast<double>(stats.total_memory_bytes) / stats.active_slots
+        : 0.0;
+
+    return stats;
 }
 
 } // namespace wjh::slotmap

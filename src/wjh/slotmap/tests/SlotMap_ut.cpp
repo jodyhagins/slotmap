@@ -11,6 +11,8 @@
 
 #include "wjh/slotmap/SlotMap.hpp"
 
+#include "wjh/slotmap/tests/slotmap_test_utils.hpp"
+
 #include <cstdint>
 #include <map>
 #include <string>
@@ -22,6 +24,7 @@
 
 namespace {
 using wjh::slotmap::Key;
+using wjh::slotmap::test::validate_statistics;
 
 template <typename KeyT>
 class SlotMap
@@ -786,6 +789,8 @@ TEST_CASE("SlotMap: property-based emplace/use roundtrip")
         bool ok = map.use(key, [&](int const & v) { found = v; });
         RC_ASSERT(ok);
         RC_ASSERT(found == value);
+
+        validate_statistics(map);
     });
 }
 
@@ -802,6 +807,8 @@ TEST_CASE("SlotMap: property-based try_emplace/use roundtrip")
         bool ok = map.use(key, [&](int const & v) { found = v; });
         RC_ASSERT(ok);
         RC_ASSERT(found == value);
+
+        validate_statistics(map);
     });
 }
 
@@ -825,6 +832,8 @@ TEST_CASE("SlotMap: property-based multiple values")
             map.use(keys[i], [&](int const & v) { found = v; });
             RC_ASSERT(found == values[i]);
         }
+
+        validate_statistics(map);
     });
 }
 
@@ -851,6 +860,8 @@ TEST_CASE("SlotMap: property-based erase invalidates key")
             RC_ASSERT(not map.contains(key));
             RC_ASSERT(not map.erase(key));
         }
+
+        validate_statistics(map);
     });
 }
 
@@ -880,6 +891,9 @@ TEST_CASE("SlotMap: property-based interleaved operations")
                 RC_ASSERT(map.erase(it->first));
                 reference.erase(it);
             }
+
+            // Validate statistics after each operation
+            validate_statistics(map);
         }
 
         RC_ASSERT(map.size().value == reference.size());

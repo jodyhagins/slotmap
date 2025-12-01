@@ -34,6 +34,117 @@ struct Options
 };
 
 /**
+ * Statistics about a SlotMap's current state.
+ *
+ * Terminology:
+ * - Slot: A physical storage location identified by an index. Each slot can
+ *     hold one object at a time, but many objects over its lifetime.
+ * - Object: A value stored in a slot. A slot creates a new "object" each time
+ *     it is reused (emplace after erase). The version field tracks this.
+ *
+ * All size values use std::size_t since IndexBits is limited to 63, ensuring
+ * size_type (IndexBits + 1 bits) always fits in 64 bits.
+ *
+ * Complexity: O(num_slabs) to compute via statistics().
+ */
+struct Statistics
+{
+    static_assert(sizeof(std::size_t) >= sizeof(std::uint64_t));
+
+    // ========================================================================
+    // Configuration (immutable after construction of the SlotMap)
+    // ========================================================================
+
+    /// Configured slots per slab (power of 2)
+    std::size_t slots_per_slab;
+
+    /// Max simultaneous slots (2^IndexBits)
+    std::size_t max_slots;
+
+    /// Max objects ever creatable (2^IndexBits * 2^VersionBits - 1)
+    /// The -1 is because slot 0 starts at version 1 to avoid the null key.
+    std::size_t max_objects;
+
+    // ========================================================================
+    // Slot accounting
+    // ========================================================================
+
+    /// Number of slots currently holding alive objects
+    std::size_t active_slots;
+
+    // Number of slots on the free list, available for immediate use
+    std::size_t free_slots;
+
+    /// Number of exhausted slots (all versions have been used)
+    std::size_t dead_slots;
+
+    /// Total number of allocated slots (active + free + dead)
+    std::size_t allocated_slots;
+
+    /// Number of slots that have not yet been allocated
+    std::size_t unallocated_slots;
+
+    // ========================================================================
+    // Capacity metrics
+    // ========================================================================
+
+    /// Slots usable without new slab (= free_slots)
+    std::size_t available_slots;
+
+    /// Max additional active possible (max - dead)
+    std::size_t remaining_slots;
+
+    // ========================================================================
+    // Object lifetime metrics
+    // ========================================================================
+
+    /// Total objects created over lifetime
+    std::size_t objects_created;
+
+    /// Objects still creatable (max - created)
+    std::size_t objects_remaining;
+
+    // ========================================================================
+    // Slab metrics
+    // ========================================================================
+
+    /// Active (non-null) slabs
+    std::size_t slab_count;
+
+    /// Slab vector size (includes nulls)
+    std::size_t slab_vector_size;
+
+    // ========================================================================
+    // Memory metrics
+    // ========================================================================
+
+    /// Memory for all slabs
+    std::size_t slab_memory_bytes;
+
+    /// Memory for slab pointer vector
+    std::size_t vector_memory_bytes;
+
+    /// Total memory usage
+    std::size_t total_memory_bytes;
+
+    // ========================================================================
+    // Derived metrics
+    // ========================================================================
+
+    /// Fraction in use: active / remaining (0 if remaining == 0)
+    double slot_utilization;
+
+    /// Fraction dead: dead / allocated (0 if allocated == 0)
+    double dead_slot_ratio;
+
+    /// Fraction exhausted: created / max (0 if max == 0)
+    double lifetime_exhaustion;
+
+    /// Average bytes: memory / active (0 if active == 0)
+    double bytes_per_object;
+};
+
+/**
  * A high-performance slot map container with O(1) insertion, deletion,
  * and lookup using persistent unique keys.
  *
@@ -55,6 +166,7 @@ public:
     using version_type = typename key_type::version_type;
     using user_type = typename key_type::user_type;
     using size_type = typename key_type::size_type;
+    using statistics_type = Statistics;
 
     // ========================================================================
     // Constants
@@ -302,6 +414,20 @@ public:
      */
     void reserve(size_type n);
 
+    /**
+     * Get statistics about the current state of the SlotMap.
+     *
+     * Returns comprehensive metrics about slot usage, object lifetime,
+     * memory consumption, and capacity. Useful for monitoring, debugging,
+     * and capacity planning.
+     *
+     * Complexity: O(num_slabs) - iterates slab vector once.
+     *
+     * @return Statistics struct with current metrics
+     */
+    [[nodiscard]]
+    statistics_type statistics() const noexcept;
+
     // ========================================================================
     // Implementation Details (private)
     // ========================================================================
@@ -316,6 +442,8 @@ private:
     std::vector<std::unique_ptr<slab_type>> slabs_{};
     size_type free_list_head_ = end_of_free_list;
     naked_size_type size_ = 0;
+    naked_size_type dead_slots_ = 0;
+    std::size_t objects_created_ = 0;
     naked_size_type slots_per_slab_;
     unsigned log2_slots_per_slab_ = 0;
     naked_size_type next_slab_base_index_ = 0;

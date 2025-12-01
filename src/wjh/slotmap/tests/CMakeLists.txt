@@ -52,10 +52,11 @@ add_slotmap_test(
 
 add_slotmap_test(
     TARGET slotmap_core_ut
-    NAME "SlotMap Core"
+    PREFIX "SlotMap Core"
     SOURCES
         SlotMap_ut.cpp
         SlotMap_use_ut.cpp
+        SlotMap_statistics_ut.cpp
 )
 
 add_slotmap_test(

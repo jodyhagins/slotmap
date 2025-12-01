@@ -47,6 +47,7 @@ class Key
       KeyBase<detail::storage_type_t<IndexBits + VersionBits + UserBits>, T>
 {
     static_assert(IndexBits > 0);
+    static_assert(IndexBits < 64);
     static_assert(VersionBits > 0);
     static constexpr unsigned num_bits = IndexBits + VersionBits + UserBits;
     using Base = detail::KeyBase<detail::storage_type_t<num_bits>, T>;
@@ -110,6 +111,13 @@ public:
     using size_type = Size;
     using version_type = Version;
     using user_type = User;
+
+    // ========================================================================
+    // Compile-time constants
+    // ========================================================================
+    static constexpr unsigned index_bits = IndexBits;
+    static constexpr unsigned version_bits = VersionBits;
+    static constexpr unsigned user_bits = UserBits;
 
     // ========================================================================
     // Special member functions

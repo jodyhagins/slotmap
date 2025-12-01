@@ -26,6 +26,7 @@ This is the complete API reference for the `wjh::slotmap` library. For a concept
   - [Element Removal](#element-removal)
   - [Bulk Operations](#bulk-operations)
   - [Capacity](#capacity)
+  - [Statistics](#statistics)
 - [Strong Types](#strong-types)
 - [Capacity and Lifetime Limits](#capacity-and-lifetime-limits)
 - [Thread Safety](#thread-safety)
@@ -83,7 +84,9 @@ A type-safe, bit-packed key with compile-time validation. Keys are lightweight h
 
 **Constraints:**
 
-`IndexBits + VersionBits + UserBits` must equal 16, 32, 64, or 128. On platforms without `__int128`, 128-bit keys are not available.
+- `IndexBits + VersionBits + UserBits` must equal 16, 32, 64, or 128. On platforms without `__int128`, 128-bit keys are not available.
+- `IndexBits` must be > 0 and < 64.
+- `VersionBits` must be > 0.
 
 **Bit Layout:**
 
@@ -200,6 +203,33 @@ auto tagged = TaggedKey(
 ---
 
 ### Key Static Members
+
+#### Static Constants
+
+```cpp
+static constexpr unsigned index_bits = IndexBits;
+static constexpr unsigned version_bits = VersionBits;
+static constexpr unsigned user_bits = UserBits;
+```
+
+**Description:** Compile-time constants exposing the template parameters. Useful for generic code and computing derived values like `max_slots` or `max_objects`.
+
+**Example:**
+
+```cpp
+using MyKey = wjh::SlotMapKey<int, 16, 16>;
+
+static_assert(MyKey::index_bits == 16);
+static_assert(MyKey::version_bits == 16);
+static_assert(MyKey::user_bits == 0);
+
+// Compute max slots at compile time
+constexpr std::size_t max_slots = std::size_t{1} << MyKey::index_bits;  // 65536
+```
+
+---
+
+#### null()
 
 ```cpp
 [[nodiscard]]
@@ -670,6 +700,7 @@ using index_type = typename key_type::index_type;
 using version_type = typename key_type::version_type;
 using user_type = typename key_type::user_type;
 using size_type = typename key_type::size_type;
+using statistics_type = Statistics;
 ```
 
 **`key_type`**: The key type (same as template parameter `KeyT`).
@@ -679,6 +710,8 @@ using size_type = typename key_type::size_type;
 **`index_type`, `version_type`, `user_type`**: Strong types from the key.
 
 **`size_type`**: Strong type for counts and sizes (has `IndexBits + 1` bits).
+
+**`statistics_type`**: Alias for the `Statistics` struct. See [Statistics](#statistics).
 
 ---
 
@@ -1653,6 +1686,210 @@ for (int i = 0; i < 10000; ++i) {
 **Use Case:**
 - **Performance**: Avoid allocations in tight loops or real-time code.
 - **Predictability**: Ensure allocations happen upfront, not during critical sections.
+
+---
+
+### Statistics
+
+#### Statistics Struct
+
+```cpp
+struct Statistics {
+    // Configuration (immutable after SlotMap construction)
+    std::size_t slots_per_slab;      // Configured slots per slab (power of 2)
+    std::size_t max_slots;           // Max simultaneous slots (2^IndexBits)
+    std::size_t max_objects;         // Max objects ever creatable
+
+    // Slot accounting
+    std::size_t active_slots;        // Slots holding alive objects
+    std::size_t free_slots;          // Slots available for immediate use
+    std::size_t dead_slots;          // Exhausted slots (versions used up)
+    std::size_t allocated_slots;     // Total allocated (active + free + dead)
+    std::size_t unallocated_slots;   // Slots not yet allocated
+
+    // Capacity metrics
+    std::size_t available_slots;     // Usable without new slab (= free_slots)
+    std::size_t remaining_slots;     // Max additional active (max - dead)
+
+    // Object lifetime metrics
+    std::size_t objects_created;     // Total objects created over lifetime
+    std::size_t objects_remaining;   // Objects still creatable (max - created)
+
+    // Slab metrics
+    std::size_t slab_count;          // Active (non-null) slabs
+    std::size_t slab_vector_size;    // Slab vector size (includes nulls)
+
+    // Memory metrics
+    std::size_t slab_memory_bytes;   // Memory for all slabs
+    std::size_t vector_memory_bytes; // Memory for slab pointer vector
+    std::size_t total_memory_bytes;  // Total memory usage
+
+    // Derived metrics
+    double slot_utilization;         // active / remaining (0 if remaining == 0)
+    double dead_slot_ratio;          // dead / allocated (0 if allocated == 0)
+    double lifetime_exhaustion;      // created / max (0 if max == 0)
+    double bytes_per_object;         // memory / active (0 if active == 0)
+};
+```
+
+**Description:** A non-templated struct containing comprehensive statistics about the SlotMap's current state. All size fields use `std::size_t` for simplicity and compatibility.
+
+**Note:** The `IndexBits` template parameter of `Key` is limited to 63 bits, ensuring all size values fit in a 64-bit `std::size_t`.
+
+---
+
+#### statistics()
+
+```cpp
+[[nodiscard]]
+Statistics statistics() const noexcept;
+```
+
+**Description:** Returns a snapshot of the SlotMap's current statistics. This method computes all metrics in a single pass, making it efficient to call when you need multiple statistics.
+
+**Returns:** A `Statistics` struct containing all metrics.
+
+**Performance:** The method performs O(slab_count) work to aggregate slab statistics. For most applications this is negligible, but avoid calling in tight loops if you only need `size()`.
+
+**Example:**
+
+```cpp
+using MyKey = wjh::SlotMapKey<int, 16, 16>;
+wjh::SlotMap<MyKey> map;
+
+// Populate the map
+for (int i = 0; i < 100; ++i) {
+    (void)map.emplace(i);
+}
+
+// Get statistics
+auto stats = map.statistics();
+
+std::cout << "Configuration:\n"
+          << "  Slots per slab: " << stats.slots_per_slab << '\n'
+          << "  Max slots: " << stats.max_slots << '\n'
+          << "  Max objects: " << stats.max_objects << '\n';
+
+std::cout << "Slot accounting:\n"
+          << "  Active: " << stats.active_slots << '\n'
+          << "  Free: " << stats.free_slots << '\n'
+          << "  Dead: " << stats.dead_slots << '\n'
+          << "  Allocated: " << stats.allocated_slots << '\n';
+
+std::cout << "Lifetime:\n"
+          << "  Objects created: " << stats.objects_created << '\n'
+          << "  Objects remaining: " << stats.objects_remaining << '\n';
+
+std::cout << "Memory:\n"
+          << "  Slab memory: " << stats.slab_memory_bytes << " bytes\n"
+          << "  Total memory: " << stats.total_memory_bytes << " bytes\n";
+
+std::cout << "Derived metrics:\n"
+          << "  Utilization: " << (stats.slot_utilization * 100) << "%\n"
+          << "  Dead ratio: " << (stats.dead_slot_ratio * 100) << "%\n"
+          << "  Lifetime exhaustion: " << (stats.lifetime_exhaustion * 100) << "%\n";
+```
+
+---
+
+#### Statistics Invariants
+
+The following relationships always hold:
+
+```cpp
+auto stats = map.statistics();
+
+// Slot accounting
+stats.active_slots + stats.free_slots + stats.dead_slots == stats.allocated_slots
+stats.allocated_slots + stats.unallocated_slots == stats.max_slots
+
+// Capacity metrics
+stats.available_slots == stats.free_slots
+stats.remaining_slots == stats.max_slots - stats.dead_slots
+
+// Object lifetime
+stats.objects_created + stats.objects_remaining == stats.max_objects
+
+// Cross-check with public API
+stats.active_slots == map.size().value
+```
+
+---
+
+#### Understanding max_objects
+
+The `max_objects` field represents the theoretical maximum number of objects that can be created over the entire lifetime of the SlotMap:
+
+```
+max_objects = 2^IndexBits × 2^VersionBits - 1
+```
+
+The `-1` accounts for the fact that slot 0 starts at version 1 (to ensure the null key with all-zero bits is never valid).
+
+**Examples:**
+
+| IndexBits | VersionBits | max_objects |
+|-----------|-------------|-------------|
+| 16        | 16          | 4,294,967,295 (~4.3 billion) |
+| 8         | 8           | 65,535 |
+| 4         | 4           | 255 |
+| 20        | 20          | ~1.1 trillion |
+
+---
+
+#### Use Cases for Statistics
+
+**Monitoring and Debugging:**
+
+```cpp
+void log_slotmap_health(wjh::SlotMap<MyKey> const & map) {
+    auto stats = map.statistics();
+
+    // Warn if approaching capacity
+    if (stats.slot_utilization > 0.9) {
+        std::cerr << "Warning: SlotMap is " << (stats.slot_utilization * 100)
+                  << "% full\n";
+    }
+
+    // Warn if many dead slots (high churn)
+    if (stats.dead_slot_ratio > 0.5) {
+        std::cerr << "Warning: " << (stats.dead_slot_ratio * 100)
+                  << "% of slots are dead (high version exhaustion)\n";
+    }
+
+    // Warn if approaching lifetime limit
+    if (stats.lifetime_exhaustion > 0.9) {
+        std::cerr << "Warning: " << (stats.lifetime_exhaustion * 100)
+                  << "% of lifetime objects consumed\n";
+    }
+}
+```
+
+**Memory Profiling:**
+
+```cpp
+void report_memory_usage(wjh::SlotMap<MyKey> const & map) {
+    auto stats = map.statistics();
+
+    std::cout << "Memory usage:\n"
+              << "  Slab memory: " << stats.slab_memory_bytes << " bytes\n"
+              << "  Vector overhead: " << stats.vector_memory_bytes << " bytes\n"
+              << "  Total: " << stats.total_memory_bytes << " bytes\n";
+
+    if (stats.active_slots > 0) {
+        std::cout << "  Bytes per object: " << stats.bytes_per_object << '\n';
+    }
+}
+```
+
+**Capacity Planning:**
+
+```cpp
+bool can_add_n_elements(wjh::SlotMap<MyKey> const & map, std::size_t n) {
+    auto stats = map.statistics();
+    return stats.remaining_slots >= n;
+}
+```
 
 ---
 
