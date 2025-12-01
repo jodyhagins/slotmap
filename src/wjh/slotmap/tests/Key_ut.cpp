@@ -62,6 +62,363 @@ make_key(auto index, auto version) noexcept
 }
 
 // ============================================================================
+// 16-bit Key Tests
+// ============================================================================
+
+TEST_CASE("Key 16-bit: value_type is uint16_t")
+{
+    using K = Key<int, 10, 6>;
+    static_assert(std::is_same_v<K::value_type, std::uint16_t>);
+    static_assert(std::is_same_v<K::tag_type, int>);
+    REQUIRE(true);
+}
+
+TEST_CASE("Key 16-bit: basic construction and accessors")
+{
+    SUBCASE("construct with all parameters") {
+        constexpr auto k = make_key<void, 10, 4, 2>(100, 5, 3);
+        static_assert(k.index() == 100);
+        static_assert(k.version() == 5);
+        static_assert(k.user() == 3);
+
+        REQUIRE(k.index() == 100);
+        REQUIRE(k.version() == 5);
+        REQUIRE(k.user() == 3);
+    }
+
+    SUBCASE("construct without user bits (defaults to 0)") {
+        constexpr auto k = make_key<void, 10, 6, 0>(100, 5);
+        static_assert(k.index() == 100);
+        static_assert(k.version() == 5);
+        static_assert(k.user() == 0);
+
+        REQUIRE(k.index() == 100);
+        REQUIRE(k.version() == 5);
+        REQUIRE(k.user() == 0);
+    }
+
+    SUBCASE("zero values") {
+        constexpr auto k = make_key<void, 10, 4, 2>(0, 0, 0);
+        static_assert(k.index() == 0);
+        static_assert(k.version() == 0);
+        static_assert(k.user() == 0);
+
+        REQUIRE(k.index() == 0);
+        REQUIRE(k.version() == 0);
+        REQUIRE(k.user() == 0);
+    }
+}
+
+TEST_CASE("Key 16-bit: default constructor creates null key")
+{
+    SUBCASE("default constructed key is null") {
+        static_assert(std::is_default_constructible_v<Key<void, 10, 6>>);
+        static_assert(
+            not std::is_trivially_default_constructible_v<Key<void, 10, 6>>);
+        constexpr Key<void, 10, 6> k;
+        static_assert(k.index() == 0);
+        static_assert(k.version() == 0);
+        static_assert(k.user() == 0);
+        static_assert(k.is_null());
+
+        REQUIRE(k.is_null());
+        REQUIRE(k.index() == 0);
+        REQUIRE(k.version() == 0);
+        REQUIRE(k.user() == 0);
+    }
+
+    SUBCASE("default constructed equals null()") {
+        constexpr Key<void, 10, 6> k{};
+        constexpr auto null_key = Key<void, 10, 6>::null();
+        static_assert(k == null_key);
+
+        REQUIRE(k == null_key);
+    }
+}
+
+TEST_CASE("Key 16-bit: null() static method")
+{
+    SUBCASE("null() returns all-zero key") {
+        constexpr auto k = Key<void, 10, 4, 2>::null();
+        static_assert(k.index() == 0);
+        static_assert(k.version() == 0);
+        static_assert(k.user() == 0);
+        static_assert(k.is_null());
+
+        REQUIRE(k.is_null());
+    }
+
+    SUBCASE("non-null key is_null() returns false") {
+        constexpr auto k = make_key<void, 10, 4, 2>(1, 0, 0);
+        static_assert(not k.is_null());
+
+        REQUIRE(not k.is_null());
+    }
+}
+
+TEST_CASE("Key 16-bit: with_user() creates new key")
+{
+    SUBCASE("with_user modifies user bits only") {
+        constexpr auto k1 = make_key<void, 10, 4, 2>(100, 5, 1);
+        constexpr auto k2 = k1.with_user(3u);
+
+        static_assert(k1.index() == 100);
+        static_assert(k1.version() == 5);
+        static_assert(k1.user() == 1);
+
+        static_assert(k2.index() == 100);
+        static_assert(k2.version() == 5);
+        static_assert(k2.user() == 3);
+
+        REQUIRE(k1.index() == k2.index());
+        REQUIRE(k1.version() == k2.version());
+        REQUIRE(k1.user() == 1);
+        REQUIRE(k2.user() == 3);
+    }
+
+    SUBCASE("with_user preserves constexpr") {
+        constexpr auto k1 = make_key<void, 10, 4, 2>(100, 5, 0);
+        constexpr auto k2 = k1.with_user(2u);
+        static_assert(k2.user() == 2);
+        REQUIRE(k2.user() == 2);
+    }
+}
+
+TEST_CASE("Key 16-bit: to_underlying() returns raw bits")
+{
+    SUBCASE("to_underlying for simple values") {
+        constexpr auto k = make_key<void, 10, 4, 2>(1, 1, 1);
+        constexpr auto raw = k.to_underlying();
+        static_assert(std::is_same_v<decltype(raw), std::uint16_t const>);
+
+        REQUIRE(raw != 0);
+    }
+
+    SUBCASE("round-trip through to_underlying") {
+        constexpr auto k1 = make_key<void, 10, 4, 2>(512, 10, 2);
+        constexpr auto raw = k1.to_underlying();
+
+        REQUIRE(raw != 0);
+    }
+}
+
+TEST_CASE("Key 16-bit: bit packing correctness")
+{
+    SUBCASE("maximum values for each field") {
+        // 10 bits for index: max = 2^10 - 1 = 1023
+        // 4 bits for version: max = 2^4 - 1 = 15
+        // 2 bits for user: max = 2^2 - 1 = 3
+        constexpr auto k = make_key<void, 10, 4, 2>(1023, 15, 3);
+
+        static_assert(k.index() == 1023);
+        static_assert(k.version() == 15);
+        static_assert(k.user() == 3);
+
+        REQUIRE(k.index() == 1023);
+        REQUIRE(k.version() == 15);
+        REQUIRE(k.user() == 3);
+    }
+
+    SUBCASE("independent bit fields don't interfere") {
+        constexpr auto k1 = make_key<void, 10, 4, 2>(1023, 0, 0);
+        constexpr auto k2 = make_key<void, 10, 4, 2>(0, 15, 0);
+        constexpr auto k3 = make_key<void, 10, 4, 2>(0, 0, 3);
+
+        static_assert(k1.index() == 1023);
+        static_assert(k1.version() == 0);
+        static_assert(k1.user() == 0);
+
+        static_assert(k2.index() == 0);
+        static_assert(k2.version() == 15);
+        static_assert(k2.user() == 0);
+
+        static_assert(k3.index() == 0);
+        static_assert(k3.version() == 0);
+        static_assert(k3.user() == 3);
+
+        REQUIRE(k1.version() == 0);
+        REQUIRE(k2.index() == 0);
+        REQUIRE(k3.version() == 0);
+    }
+}
+
+TEST_CASE("Key 16-bit: different bit configurations")
+{
+    SUBCASE("configuration 8/8/0") {
+        constexpr auto k = make_key<void, 8, 8, 0>(255, 255);
+        static_assert(k.index() == 255);
+        static_assert(k.version() == 255);
+        static_assert(k.user() == 0);
+
+        REQUIRE(k.index() == 255);
+        REQUIRE(k.version() == 255);
+    }
+
+    SUBCASE("configuration 12/4/0") {
+        constexpr auto k = make_key<void, 12, 4, 0>(4095, 15);
+        static_assert(k.index() == 4095);
+        static_assert(k.version() == 15);
+
+        REQUIRE(k.index() == 4095);
+        REQUIRE(k.version() == 15);
+    }
+
+    SUBCASE("configuration 6/6/4") {
+        constexpr auto k = make_key<void, 6, 6, 4>(63, 63, 15);
+        static_assert(k.index() == 63);
+        static_assert(k.version() == 63);
+        static_assert(k.user() == 15);
+
+        REQUIRE(k.index() == 63);
+        REQUIRE(k.version() == 63);
+        REQUIRE(k.user() == 15);
+    }
+}
+
+TEST_CASE("Key 16-bit: equality comparison")
+{
+    SUBCASE("identical keys are equal") {
+        constexpr auto k1 = make_key<void, 10, 4, 2>(100, 5, 3);
+        constexpr auto k2 = make_key<void, 10, 4, 2>(100, 5, 3);
+        static_assert(k1 == k2);
+
+        REQUIRE(k1 == k2);
+        REQUIRE_FALSE(k1 != k2);
+    }
+
+    SUBCASE("keys with different index are not equal") {
+        constexpr auto k1 = make_key<void, 10, 4, 2>(100, 5, 3);
+        constexpr auto k2 = make_key<void, 10, 4, 2>(101, 5, 3);
+        static_assert(k1 != k2);
+
+        REQUIRE(k1 != k2);
+        REQUIRE_FALSE(k1 == k2);
+    }
+
+    SUBCASE("keys with different version are not equal") {
+        constexpr auto k1 = make_key<void, 10, 4, 2>(100, 5, 3);
+        constexpr auto k2 = make_key<void, 10, 4, 2>(100, 6, 3);
+        static_assert(k1 != k2);
+
+        REQUIRE(k1 != k2);
+    }
+
+    SUBCASE("keys with different user are not equal") {
+        constexpr auto k1 = make_key<void, 10, 4, 2>(100, 5, 1);
+        constexpr auto k2 = make_key<void, 10, 4, 2>(100, 5, 2);
+        static_assert(k1 != k2);
+
+        REQUIRE(k1 != k2);
+    }
+}
+
+TEST_CASE("Key 16-bit: three-way comparison")
+{
+    SUBCASE("less than comparison") {
+        constexpr auto k1 = make_key<void, 10, 4, 2>(100, 5, 1);
+        constexpr auto k2 = make_key<void, 10, 4, 2>(200, 5, 1);
+
+        REQUIRE(k1 < k2);
+        REQUIRE(k1 <= k2);
+        REQUIRE_FALSE(k1 > k2);
+        REQUIRE_FALSE(k1 >= k2);
+    }
+
+    SUBCASE("greater than comparison") {
+        constexpr auto k1 = make_key<void, 10, 4, 2>(200, 5, 1);
+        constexpr auto k2 = make_key<void, 10, 4, 2>(100, 5, 1);
+
+        REQUIRE(k1 > k2);
+        REQUIRE(k1 >= k2);
+        REQUIRE_FALSE(k1 < k2);
+        REQUIRE_FALSE(k1 <= k2);
+    }
+
+    SUBCASE("equal comparison with <=, >=") {
+        constexpr auto k1 = make_key<void, 10, 4, 2>(100, 5, 1);
+        constexpr auto k2 = make_key<void, 10, 4, 2>(100, 5, 1);
+
+        REQUIRE(k1 <= k2);
+        REQUIRE(k1 >= k2);
+        REQUIRE_FALSE(k1 < k2);
+        REQUIRE_FALSE(k1 > k2);
+    }
+
+    SUBCASE("comparison considers all bits") {
+        constexpr auto k1 = make_key<void, 10, 4, 2>(100, 5, 1);
+        constexpr auto k2 = make_key<void, 10, 4, 2>(100, 5, 2);
+
+        REQUIRE(k1 < k2);
+    }
+}
+
+TEST_CASE("Key 16-bit: hash function")
+{
+    SUBCASE("hash() member function exists and is constexpr") {
+        constexpr auto k = make_key<void, 10, 4, 2>(100, 5, 3);
+        constexpr auto h = k.hash();
+        static_assert(std::is_same_v<decltype(h), std::size_t const>);
+        static_assert(h != 0); // Unlikely to be zero for non-null key
+
+        REQUIRE(h != 0);
+    }
+
+    SUBCASE("equal keys have equal hashes") {
+        constexpr auto k1 = make_key<void, 10, 4, 2>(100, 5, 3);
+        constexpr auto k2 = make_key<void, 10, 4, 2>(100, 5, 3);
+
+        static_assert(k1.hash() == k2.hash());
+        REQUIRE(k1.hash() == k2.hash());
+    }
+
+    SUBCASE("different keys likely have different hashes") {
+        constexpr auto k1 = make_key<void, 10, 4, 2>(100, 5, 3);
+        constexpr auto k2 = make_key<void, 10, 4, 2>(101, 5, 3);
+
+        // This is probabilistic, but very likely
+        static_assert(k1.hash() != k2.hash());
+        REQUIRE(k1.hash() != k2.hash());
+    }
+}
+
+TEST_CASE("Key 16-bit: std::hash specialization")
+{
+    SUBCASE("std::hash works with Key") {
+        using K = Key<void, 10, 4, 2>;
+        auto k = make_key<K>(100, 5, 3);
+
+        std::hash<K> hasher;
+        auto h = hasher(k);
+
+        REQUIRE(std::is_same_v<decltype(h), std::size_t>);
+        REQUIRE(h != 0);
+    }
+
+    SUBCASE("std::hash matches member hash()") {
+        using K = Key<void, 10, 4, 2>;
+        auto k = make_key<K>(100, 5, 3);
+
+        std::hash<K> hasher;
+        REQUIRE(hasher(k) == k.hash());
+    }
+
+    SUBCASE("Key works in unordered_map") {
+        using K = Key<void, 10, 4, 2>;
+        std::unordered_map<K, std::string> map;
+
+        auto k1 = make_key<K>(100, 5, 3);
+        auto k2 = make_key<K>(200, 10, 1);
+
+        map[k1] = "first";
+        map[k2] = "second";
+
+        REQUIRE(map[k1] == "first");
+        REQUIRE(map[k2] == "second");
+        REQUIRE(map.size() == 2);
+    }
+}
+
+// ============================================================================
 // 32-bit Key Tests
 // ============================================================================
 

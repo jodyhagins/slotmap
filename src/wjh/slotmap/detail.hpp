@@ -58,6 +58,12 @@ template <unsigned TotalBits>
 struct storage_type;
 
 template <>
+struct storage_type<16>
+{
+    using type = std::uint16_t;
+};
+
+template <>
 struct storage_type<32>
 {
     using type = std::uint32_t;
@@ -188,6 +194,13 @@ splitmix64(std::uint_fast64_t x) noexcept
     x = (x ^ (x >> 30)) * 0xbf58'476d'1ce4'e5b9ULL;
     x = (x ^ (x >> 27)) * 0x94d0'49bb'1331'11ebULL;
     return x ^ (x >> 31);
+}
+
+// Hash for 16-bit values
+constexpr std::size_t
+hash_bits(std::uint16_t x) noexcept
+{
+    return static_cast<std::size_t>(splitmix64(x));
 }
 
 // Hash for 32-bit values

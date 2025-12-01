@@ -32,7 +32,7 @@ namespace wjh::slotmap {
  * @tparam UserBits  Number of bits allocated for user-defined data. If 0, there
  * are no user controlled bits. Defaults to 0.
  *
- * The sum of IndexBits + VersionBits + UserBits must equal 32, 64, or 128.
+ * The sum of IndexBits + VersionBits + UserBits must equal 16, 32, 64, or 128.
  * 128-bit keys are only supported on platforms with __uint128_t.
  *
  * Bit layout: [user][version][index] from MSB to LSB.

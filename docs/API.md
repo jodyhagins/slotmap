@@ -83,7 +83,7 @@ A type-safe, bit-packed key with compile-time validation. Keys are lightweight h
 
 **Constraints:**
 
-`IndexBits + VersionBits + UserBits` must equal 32, 64, or 128. On platforms without `__int128`, 128-bit keys are not available.
+`IndexBits + VersionBits + UserBits` must equal 16, 32, 64, or 128. On platforms without `__int128`, 128-bit keys are not available.
 
 **Bit Layout:**
 

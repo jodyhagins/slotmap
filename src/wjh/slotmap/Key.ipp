@@ -80,8 +80,8 @@ with_user(user_type new_user) const noexcept
 {
     // Clear existing user bits and set new ones
     auto const cleared = Base::bits_ & ~safe_shift_left(user_mask, user_shift);
-    auto const updated = cleared |
-        safe_shift_left(new_user.value & user_mask, user_shift);
+    auto const updated = value_type(
+        cleared | safe_shift_left(new_user.value & user_mask, user_shift));
 
     Key result;
     result.Base::bits_ = updated;
@@ -125,7 +125,7 @@ safe_shift_left(value_type val, unsigned shift) noexcept
     if (shift >= num_bits) {
         return value_type{0};
     }
-    return val << shift;
+    return value_type(val << shift);
 }
 
 template <typename T, unsigned I, unsigned V, unsigned U>
@@ -136,7 +136,7 @@ safe_shift_right(value_type val, unsigned shift) noexcept
     if (shift >= num_bits) {
         return value_type{0};
     }
-    return val >> shift;
+    return value_type(val >> shift);
 }
 
 } // namespace wjh::slotmap

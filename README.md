@@ -57,7 +57,7 @@ players.erase(key);
 
 - **Header-only**: Single include, no library to link
 - **Type-safe keys**: The phantom type parameter `T` prevents mixing keys from different SlotMaps at compile time
-- **Configurable bit layout**: Choose how many bits for index, version, and user data (must total 32, 64, or 128)
+- **Configurable bit layout**: Choose how many bits for index, version, and user data (must total 16, 32, 64, or 128)
 - **Strong types throughout**: `index_type`, `version_type`, `size_type` are distinct types, not raw integers
 - **Fixed capacity**: Maximum simultaneous elements = 2^IndexBits; maximum total insertions = 2^IndexBits × 2^VersionBits - 1
 - **No iterators**: Access is via `use()` callback or `for_each()` - deliberate design to prevent dangling iterator bugs
@@ -106,9 +106,12 @@ version_type ver = key.version();
 
 **4. Configurable key sizes**
 
-Choose 32-bit, 64-bit, or 128-bit keys (128-bit requires compiler support for `__uint128_t`):
+Choose 16-bit, 32-bit, 64-bit, or 128-bit keys (128-bit requires compiler support for `__uint128_t`):
 
 ```cpp
+// 16-bit key: 8 index + 8 version = 256 capacity, 256 generations
+using TinyKey = wjh::SlotMapKey<MyType, 8, 8>;
+
 // 32-bit key: 20 index + 12 version = 1M capacity, 4K generations
 using SmallKey = wjh::SlotMapKey<MyType, 20, 12>;
 
@@ -347,7 +350,7 @@ template <
 class Key;
 ```
 
-Total bits must equal 32, 64, or 128.
+Total bits must equal 16, 32, 64, or 128.
 
 ### Examples
 

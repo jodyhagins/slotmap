@@ -77,7 +77,7 @@ This pattern provides:
 
 ### Bit Packing
 
-Keys are bit-packed into 32, 64, or 128-bit unsigned integers according to this layout:
+Keys are bit-packed into 16, 32, 64, or 128-bit unsigned integers according to this layout:
 
 ```
 MSB                                   LSB
@@ -86,7 +86,7 @@ MSB                                   LSB
 └──────────┴─────────────┴──────────────┘
 ```
 
-The total bit count must be exactly 32, 64, or 128. No other sizes are supported.
+The total bit count must be exactly 16, 32, 64, or 128. No other sizes are supported.
 
 The `storage_type` template in `detail.hpp` selects the underlying type:
 
@@ -94,6 +94,7 @@ The `storage_type` template in `detail.hpp` selects the underlying type:
 template <unsigned TotalBits>
 struct storage_type;
 
+template <> struct storage_type<16> { using type = std::uint16_t; };
 template <> struct storage_type<32> { using type = std::uint32_t; };
 template <> struct storage_type<64> { using type = std::uint64_t; };
 #ifdef __SIZEOF_INT128__

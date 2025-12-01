@@ -892,4 +892,312 @@ TEST_CASE("SlotMap: property-based interleaved operations")
     });
 }
 
+// ============================================================================
+// 16-bit Key SlotMap Tests
+// ============================================================================
+
+TEST_CASE("SlotMap 16-bit: value_type is uint16_t")
+{
+    using K = Key<int, 10, 6>;
+    static_assert(std::is_same_v<K::value_type, std::uint16_t>);
+
+    using Map = SlotMap<K>;
+    Map map;
+
+    REQUIRE(map.is_empty());
+}
+
+TEST_CASE("SlotMap 16-bit: basic emplace and use")
+{
+    using K = Key<int, 10, 4, 2>;
+    SlotMap<K> map;
+
+    SUBCASE("single emplace") {
+        auto key = map.emplace(42);
+
+        CHECK(not key.is_null());
+        CHECK(map.contains(key));
+        CHECK(map.size().value == 1);
+
+        int value = 0;
+        bool found = map.use(key, [&](int const & v) { value = v; });
+        CHECK(found);
+        CHECK(value == 42);
+    }
+
+    SUBCASE("multiple emplaces") {
+        std::vector<K> keys;
+        for (int i = 0; i < 50; ++i) {
+            auto key = map.emplace(i * 10);
+            CHECK(not key.is_null());
+            keys.push_back(key);
+        }
+
+        CHECK(map.size().value == 50);
+
+        for (std::size_t i = 0; i < keys.size(); ++i) {
+            int value = -1;
+            bool found = map.use(keys[i], [&](int const & v) { value = v; });
+            CHECK(found);
+            CHECK(value == static_cast<int>(i) * 10);
+        }
+    }
+}
+
+TEST_CASE("SlotMap 16-bit: erase and slot reuse")
+{
+    using K = Key<int, 10, 4, 2>;
+    SlotMap<K> map(4u);
+
+    auto key1 = map.emplace(1);
+    CHECK(key1.version().value == 1);
+    map.erase(key1);
+
+    auto key2 = map.emplace(2);
+    // Same index reused, version incremented
+    CHECK(key2.index() == key1.index());
+    CHECK(key2.version().value == 2);
+
+    // Old key invalid
+    CHECK(not map.contains(key1));
+    CHECK(map.contains(key2));
+}
+
+TEST_CASE("SlotMap 16-bit: version exhaustion")
+{
+    // 10 index bits, 4 version bits, 2 user bits = 16 bits total
+    // 4-bit version: versions 1-15, max_version = 15
+    using K = Key<int, 10, 4, 2>;
+    SlotMap<K> map(4u);
+
+    auto key1 = map.emplace(1);
+    auto idx = key1.index();
+    CHECK(key1.version().value == 1);
+
+    // Exhaust all 15 versions on this slot
+    for (unsigned v = 2; v <= 15; ++v) {
+        map.erase(key1);
+        key1 = map.emplace(static_cast<int>(v));
+        CHECK(key1.index() == idx);
+        CHECK(key1.version().value == v);
+    }
+
+    // After erasing version 15, slot is dead
+    map.erase(key1);
+
+    // Next emplace should use a different slot
+    auto key_new = map.emplace(100);
+    CHECK(key_new.index() != idx);
+}
+
+TEST_CASE("SlotMap 16-bit: capacity exhaustion with small index space")
+{
+    // 6 index bits = 64 usable indices
+    // 8 version bits, 2 user bits = 16 bits total
+    using K = Key<int, 6, 8, 2>;
+    SlotMap<K> map(16u);
+
+    std::vector<K> keys;
+    for (int i = 0; i < 64; ++i) {
+        auto key = map.try_emplace(i);
+        CHECK(not key.is_null());
+        keys.push_back(key);
+    }
+
+    CHECK(map.size().value == 64);
+
+    // 65th try_emplace should return null
+    auto overflow_key = map.try_emplace(999);
+    CHECK(overflow_key.is_null());
+    CHECK(map.size().value == 64);
+
+    // emplace should throw
+    bool threw = false;
+    try {
+        (void)map.emplace(999);
+    } catch (std::length_error const &) {
+        threw = true;
+    }
+    CHECK(threw);
+}
+
+TEST_CASE("SlotMap 16-bit: different bit configurations")
+{
+    SUBCASE("8/8/0 configuration") {
+        using K = Key<int, 8, 8>;
+        SlotMap<K> map;
+
+        auto key = map.emplace(42);
+        CHECK(not key.is_null());
+        CHECK(map.contains(key));
+
+        int value = 0;
+        map.use(key, [&](int const & v) { value = v; });
+        CHECK(value == 42);
+    }
+
+    SUBCASE("12/4/0 configuration") {
+        using K = Key<int, 12, 4>;
+        SlotMap<K> map;
+
+        auto key = map.emplace(42);
+        CHECK(not key.is_null());
+
+        // 4-bit version starts at 1
+        CHECK(key.version().value == 1);
+    }
+
+    SUBCASE("6/6/4 configuration") {
+        using K = Key<int, 6, 6, 4>;
+        SlotMap<K> map;
+
+        auto key = map.emplace(42);
+        CHECK(not key.is_null());
+        CHECK(key.user() == 0); // User bits default to 0
+    }
+}
+
+TEST_CASE("SlotMap 16-bit: type traits")
+{
+    using Map = SlotMap<Key<int, 10, 6>>;
+
+    static_assert(std::is_default_constructible_v<Map>);
+    static_assert(std::is_copy_constructible_v<Map>);
+    static_assert(std::is_copy_assignable_v<Map>);
+    static_assert(std::is_move_constructible_v<Map>);
+    static_assert(std::is_move_assignable_v<Map>);
+    static_assert(std::is_nothrow_move_constructible_v<Map>);
+    static_assert(std::is_nothrow_move_assignable_v<Map>);
+
+    REQUIRE(true);
+}
+
+TEST_CASE("SlotMap 16-bit: move operations preserve data")
+{
+    using K = Key<int, 10, 6>;
+    SlotMap<K> map;
+
+    auto key1 = map.emplace(42);
+    auto key2 = map.emplace(100);
+
+    SUBCASE("move construction") {
+        auto moved = std::move(map);
+
+        CHECK(moved.size().value == 2);
+        CHECK(moved.contains(key1));
+        CHECK(moved.contains(key2));
+
+        int v1 = 0, v2 = 0;
+        moved.use(key1, [&](int const & v) { v1 = v; });
+        moved.use(key2, [&](int const & v) { v2 = v; });
+        CHECK(v1 == 42);
+        CHECK(v2 == 100);
+    }
+
+    SUBCASE("move assignment") {
+        SlotMap<K> other;
+        other = std::move(map);
+
+        CHECK(other.size().value == 2);
+        CHECK(other.contains(key1));
+        CHECK(other.contains(key2));
+    }
+}
+
+TEST_CASE("SlotMap 16-bit: null key handling")
+{
+    using K = Key<int, 10, 6>;
+    SlotMap<K> map;
+    auto null_key = K::null();
+
+    CHECK(not map.contains(null_key));
+
+    bool called = false;
+    CHECK(not map.use(null_key, [&](int &) { called = true; }));
+    CHECK(not called);
+
+    CHECK(not map.erase(null_key));
+}
+
+TEST_CASE("SlotMap 16-bit: property-based emplace/use roundtrip")
+{
+    rc::check("16-bit: emplace then use returns same value", []() {
+        using K = Key<int, 10, 4, 2>;
+        SlotMap<K> map;
+        auto const value = *rc::gen::arbitrary<int>();
+
+        auto key = map.emplace(value);
+        RC_ASSERT(not key.is_null());
+
+        int found = 0;
+        bool ok = map.use(key, [&](int const & v) { found = v; });
+        RC_ASSERT(ok);
+        RC_ASSERT(found == value);
+    });
+}
+
+TEST_CASE("SlotMap 16-bit: property-based multiple values")
+{
+    rc::check("16-bit: multiple emplaces all accessible", []() {
+        using K = Key<int, 10, 4, 2>;
+        SlotMap<K> map;
+
+        // Limited to 50 to stay well within 10-bit index space (1024)
+        auto const values = *rc::gen::container<std::vector<int>>(
+            50,
+            rc::gen::arbitrary<int>());
+
+        std::vector<K> keys;
+        for (auto v : values) {
+            keys.push_back(map.emplace(v));
+        }
+
+        RC_ASSERT(map.size().value == values.size());
+
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            int found = 0;
+            map.use(keys[i], [&](int const & v) { found = v; });
+            RC_ASSERT(found == values[i]);
+        }
+    });
+}
+
+TEST_CASE("SlotMap 16-bit: property-based interleaved operations")
+{
+    rc::check("16-bit: interleaved emplace/erase maintains consistency", []() {
+        using K = Key<int, 10, 4, 2>;
+        SlotMap<K> map;
+        std::map<K, int> reference;
+
+        auto const ops = *rc::gen::inRange<std::size_t>(10, 50);
+
+        for (std::size_t i = 0; i < ops; ++i) {
+            bool do_insert = *rc::gen::arbitrary<bool>();
+
+            if (do_insert || reference.empty()) {
+                auto value = *rc::gen::arbitrary<int>();
+                auto key = map.emplace(value);
+                RC_ASSERT(not key.is_null());
+                reference[key] = value;
+            } else {
+                auto it = reference.begin();
+                std::advance(
+                    it,
+                    *rc::gen::inRange<std::size_t>(0, reference.size()));
+
+                RC_ASSERT(map.erase(it->first));
+                reference.erase(it);
+            }
+        }
+
+        RC_ASSERT(map.size().value == reference.size());
+
+        for (auto const & [key, expected] : reference) {
+            int found = 0;
+            RC_ASSERT(map.use(key, [&](int const & v) { found = v; }));
+            RC_ASSERT(found == expected);
+        }
+    });
+}
+
 } // anonymous namespace
