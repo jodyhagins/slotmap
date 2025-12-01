@@ -23,3 +23,32 @@ add_slotmap_benchmark(
     SOURCES
         simple_bench.cpp
 )
+
+# Micro-benchmarks: Core operations (insert, lookup, erase, iterate)
+add_slotmap_benchmark(
+    TARGET slotmap_micro_bench
+    SOURCES
+        micro_bench.cpp
+)
+
+# Macro-benchmarks: Realistic workloads (game lifecycle, static lookup, etc.)
+add_slotmap_benchmark(
+    TARGET slotmap_macro_bench
+    SOURCES
+        macro_bench.cpp
+)
+
+# Combined benchmark executable for convenience
+add_slotmap_benchmark(
+    TARGET slotmap_all_bench
+    SOURCES
+        micro_bench.cpp
+        macro_bench.cpp
+)
+
+# Sized iteration benchmark - uses appropriately-sized keys
+add_slotmap_benchmark(
+    TARGET slotmap_sized_bench
+    SOURCES
+        sized_iteration_bench.cpp
+)
