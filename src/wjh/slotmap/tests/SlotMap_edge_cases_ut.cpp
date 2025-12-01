@@ -19,8 +19,8 @@
 #include "testing/rapidcheck.hpp"
 
 namespace {
-using wjh::slotmap::Break;
 using wjh::slotmap::Key;
+using wjh::slotmap::Options;
 
 template <typename KeyT>
 class SlotMap
@@ -651,10 +651,10 @@ TEST_CASE("SlotMap: property-based for_each early exit")
         }
 
         std::size_t visited = 0;
-        auto result = map.for_each([&](int const &, Break & brk) {
+        auto result = map.for_each([&](int const &, Options & opts) {
             ++visited;
             if (visited >= stop_at) {
-                brk.stop = true;
+                opts.stop = true;
             }
         });
 

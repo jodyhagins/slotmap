@@ -1014,57 +1014,29 @@ The `for_each()` implementation handles multiple callable signatures via overloa
 ```cpp
 namespace detail {
 template <typename F, typename KeyT, typename ValT>
-void invoke_for_each(F && func, KeyT key, ValT & val, [[maybe_unused]] Break & brk) {
-    if constexpr (std::is_invocable_v<F, KeyT, ValT &, Break &>) {
-        std::invoke(std::forward<F>(func), key, val, brk);
-    } else if constexpr (std::is_invocable_v<F, KeyT, ValT &>) {
-        std::invoke(std::forward<F>(func), key, val);
-    } else if constexpr (std::is_invocable_v<F, ValT &, Break &>) {
-        std::invoke(std::forward<F>(func), val, brk);
+void
+invoke_for_each(F & func, KeyT key, ValT & val, [[maybe_unused]] Options & opt)
+{
+    if constexpr (std::is_invocable_v<F &, KeyT, ValT &, Options &>) {
+        std::invoke(func, key, val, opt);
+    } else if constexpr (std::is_invocable_v<F &, KeyT, ValT &>) {
+        std::invoke(func, key, val);
+    } else if constexpr (std::is_invocable_v<F &, ValT &, Options &>) {
+        std::invoke(func, val, opt);
     } else {
-        std::invoke(std::forward<F>(func), val);
+        std::invoke(func, val);
     }
 }
 }
 ```
 
 This allows users to pass lambdas with any of these signatures:
-- `[](key_type k, T & v, Break & b) { ... }`
+- `[](key_type k, T & v, Options & b) { ... }`
 - `[](key_type k, T & v) { ... }`
-- `[](T & v, Break & b) { ... }`
+- `[](T & v, Options & b) { ... }`
 - `[](T & v) { ... }`
 
 The compiler selects the appropriate invocation at compile-time based on what the callable accepts.
-
-**Non-const delegates to const**:
-
-```cpp
-template <typename F>
-size_type for_each(F && func) {
-    return const_cast<SlotMap const &>(*this).for_each(
-        [&func](key_type key, mapped_type const & v, Break & brk) {
-            detail::invoke_for_each(
-                std::forward<F>(func),
-                key,
-                const_cast<mapped_type &>(v),  // Cast away const for non-const overload
-                brk);
-        });
-}
-```
-
-This eliminates code duplication. The const version contains the actual iteration logic, and the non-const version wraps it with const_cast.
-
-**Why is this safe?**
-
-The non-const `for_each()` is only called on non-const `SlotMap` objects. We know the underlying values are actually mutable. The const_cast simply restores the original mutability that was temporarily removed for code reuse.
-
-**Key implementation details**:
-
-1. Check `brk.stop` in both loops for early exit
-2. Skip `nullptr` slabs (from recycling)
-3. Reconstruct full index from `slab_idx << log2_slots_per_slab_ + slot_idx`
-4. Build key from reconstructed index + slot's current version
-5. Return number of elements actually visited (may be less than `size()` if early exit)
 
 ---
 
@@ -1516,7 +1488,7 @@ Bulk removal based on predicate:
 template <typename Pred>
 size_type erase_if(Pred && pred) {
     size_type removed{0};
-    for_each([&](key_type key, mapped_type & value, Break &) {
+    for_each([&](key_type key, mapped_type & value, Options &) {
         if (std::invoke(pred, value)) {
             erase(key);
             ++removed;

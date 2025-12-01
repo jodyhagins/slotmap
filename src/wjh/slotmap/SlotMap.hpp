@@ -21,22 +21,15 @@
 namespace wjh::slotmap {
 
 /**
- * Tag type for early exit from for_each().
+ * Options for use() and for_each() operations.
  *
- * Set stop = true to terminate iteration early.
- */
-struct Break
-{
-    bool stop = false;
-};
-
-/**
- * Options for use() operations.
- *
- * Set erase = true to erase the element after invoking the callback.
+ * @var stop  Set true to stop iteration after this callback (for_each only).
+ * @var erase Set true to erase the element after the callback returns.
+ *            Ignored on const overloads (asserts in debug mode).
  */
 struct Options
 {
+    bool stop = false;
     bool erase = false;
 };
 
@@ -257,16 +250,16 @@ public:
     /**
      * Iterate over all alive elements.
      *
-     * Invokes func(key, value, Break) or func(key, value) or func(value) for
-     * each alive element. Set break_tag.stop = true to stop iteration early.
+     * Invokes the callable for each alive element. Supported signatures:
+     * - void(key_type, T &, Options &)
+     * - void(key_type, T &)
+     * - void(T &, Options &)
+     * - void(T &)
      *
-     * @param func Callable with signature void(key_type, T&, Break&),
-     * void(key_type, T&), void(T&, Break&), or void(T&).
-     * @return Number of elements visited (may be less than size() if early
-     * exit)
+     * @param func Callable to invoke for each element
+     * @return Number of elements visited
      *
-     * @note Iteration order is unspecified but consistent within a single call
-     * @note Undefined behavior: modifying the SlotMap during iteration
+     * @note The const overload does not support Options; erase asserts.
      */
     template <typename F>
     size_type for_each(F && func);
@@ -332,6 +325,7 @@ private:
     bool allocate_new_slab();
     void initialize_slab_free_list(slab_type * slab, index_type base);
     void try_recycle_slab(std::size_t slab_idx);
+    static size_type for_each(auto & self, auto & func);
     static bool use(auto & self, key_type key, auto & func);
 };
 

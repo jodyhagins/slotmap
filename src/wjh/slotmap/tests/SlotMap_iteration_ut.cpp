@@ -17,8 +17,8 @@
 #include "testing/rapidcheck.hpp"
 
 namespace {
-using wjh::slotmap::Break;
 using wjh::slotmap::Key;
+using wjh::slotmap::Options;
 
 template <typename KeyT>
 class SlotMap
@@ -98,9 +98,9 @@ TEST_CASE("for_each early exit")
 
     SUBCASE("stop after first element") {
         std::size_t count = 0;
-        auto visited = map.for_each([&](int const &, Break & brk) {
+        auto visited = map.for_each([&](int const &, Options & opts) {
             ++count;
-            brk.stop = true;
+            opts.stop = true;
         });
 
         CHECK(visited.value == 1);
@@ -109,10 +109,10 @@ TEST_CASE("for_each early exit")
 
     SUBCASE("stop after N elements") {
         std::size_t count = 0;
-        auto visited = map.for_each([&](int const &, Break & brk) {
+        auto visited = map.for_each([&](int const &, Options & opts) {
             ++count;
             if (count >= 5) {
-                brk.stop = true;
+                opts.stop = true;
             }
         });
 
@@ -204,6 +204,176 @@ TEST_CASE("for_each with sparse data")
     // Odd values should remain
     for (int i = 1; i < 10; i += 2) {
         CHECK(found.count(i) == 1);
+    }
+}
+
+TEST_CASE("for_each with erase option")
+{
+    SlotMap<Key<int, 16, 16>> map(4u);
+
+    SUBCASE("erase all elements") {
+        for (int i = 0; i < 10; ++i) {
+            (void)map.emplace(i);
+        }
+
+        auto visited = map.for_each(
+            [](int const &, Options & opts) { opts.erase = true; });
+
+        CHECK(visited.value == 10);
+        CHECK(map.is_empty());
+        CHECK(map.size().value == 0);
+    }
+
+    SUBCASE("erase elements matching predicate") {
+        std::vector<Key<int, 16, 16>> keys;
+        for (int i = 0; i < 10; ++i) {
+            keys.push_back(map.emplace(i));
+        }
+
+        // Erase odd values
+        map.for_each([](int const & v, Options & opts) {
+            if (v % 2 == 1) {
+                opts.erase = true;
+            }
+        });
+
+        CHECK(map.size().value == 5);
+
+        // Even values should remain
+        for (std::size_t i = 0; i < keys.size(); i += 2) {
+            CHECK(map.contains(keys[i]));
+        }
+        // Odd values should be erased
+        for (std::size_t i = 1; i < keys.size(); i += 2) {
+            CHECK(not map.contains(keys[i]));
+        }
+    }
+
+    SUBCASE("erase single element") {
+        std::vector<Key<int, 16, 16>> keys;
+        for (int i = 0; i < 5; ++i) {
+            keys.push_back(map.emplace(i));
+        }
+
+        // Erase only value 2
+        map.for_each([](int const & v, Options & opts) {
+            if (v == 2) {
+                opts.erase = true;
+            }
+        });
+
+        CHECK(map.size().value == 4);
+        CHECK(map.contains(keys[0]));
+        CHECK(map.contains(keys[1]));
+        CHECK(not map.contains(keys[2]));
+        CHECK(map.contains(keys[3]));
+        CHECK(map.contains(keys[4]));
+    }
+
+    SUBCASE("erase with key access") {
+        std::vector<Key<int, 16, 16>> keys;
+        for (int i = 0; i < 5; ++i) {
+            keys.push_back(map.emplace(i * 10));
+        }
+
+        Key<int, 16, 16> target_key = keys[2];
+        std::set<Key<int, 16, 16>> erased_keys;
+
+        // Erase element with specific key
+        map.for_each([&](auto key, int const &, Options & opts) {
+            if (key == target_key) {
+                opts.erase = true;
+                erased_keys.insert(key);
+            }
+        });
+
+        CHECK(erased_keys.size() == 1);
+        CHECK(erased_keys.count(target_key) == 1);
+        CHECK(map.size().value == 4);
+        CHECK(not map.contains(target_key));
+    }
+
+    SUBCASE("erase combined with stop") {
+        for (int i = 0; i < 10; ++i) {
+            (void)map.emplace(i);
+        }
+
+        std::size_t count = 0;
+        map.for_each([&](int const &, Options & opts) {
+            ++count;
+            opts.erase = true;
+            if (count >= 3) {
+                opts.stop = true;
+            }
+        });
+
+        // Should have visited and erased exactly 3
+        CHECK(count == 3);
+        CHECK(map.size().value == 7);
+    }
+
+    SUBCASE("erase with value modification before erase") {
+        static int destructor_sum = 0;
+
+        struct Value
+        {
+            int data;
+
+            explicit Value(int d)
+            : data(d)
+            { }
+
+            ~Value() { destructor_sum += data; }
+        };
+
+        destructor_sum = 0;
+
+        {
+            SlotMap<Key<Value, 16, 16>> vmap;
+            (void)vmap.emplace(1);
+            (void)vmap.emplace(2);
+            (void)vmap.emplace(3);
+
+            // Modify values before erasing
+            vmap.for_each([](Value & v, Options & opts) {
+                v.data *= 10;
+                opts.erase = true;
+            });
+
+            CHECK(vmap.is_empty());
+        }
+
+        // Destructors should have been called with modified values
+        CHECK(destructor_sum == 60); // 10 + 20 + 30
+    }
+}
+
+TEST_CASE("for_each erase across multiple slabs")
+{
+    SlotMap<Key<int, 16, 16>> map(4u); // 4 slots per slab
+
+    // Create 16 elements across 4 slabs
+    std::vector<Key<int, 16, 16>> keys;
+    for (int i = 0; i < 16; ++i) {
+        keys.push_back(map.emplace(i));
+    }
+
+    CHECK(map.size().value == 16);
+
+    // Erase elements in first and third slab (indices 0-3 and 8-11)
+    map.for_each([](auto key, int const &, Options & opts) {
+        auto idx = key.index().value;
+        if (idx < 4 || (idx >= 8 && idx < 12)) {
+            opts.erase = true;
+        }
+    });
+
+    CHECK(map.size().value == 8);
+
+    // Verify correct elements remain
+    for (std::size_t i = 0; i < 16; ++i) {
+        bool should_exist = (i >= 4 && i < 8) || (i >= 12);
+        CHECK(map.contains(keys[i]) == should_exist);
     }
 }
 
@@ -502,6 +672,92 @@ TEST_CASE("property-based for_each with sparse map")
         map.for_each([&](auto key, int const & v) { visited[key] = v; });
 
         RC_ASSERT(visited == reference);
+    });
+}
+
+TEST_CASE("property-based for_each erase by predicate")
+{
+    rc::check("for_each erase removes matching elements", []() {
+        SlotMap<Key<int, 16, 15, 1>> map;
+        std::map<Key<int, 16, 15, 1>, int> reference;
+
+        auto const count = *rc::gen::inRange<std::size_t>(1, 100);
+
+        for (std::size_t i = 0; i < count; ++i) {
+            auto value = *rc::gen::inRange<int>(0, 1000);
+            auto key = map.emplace(value);
+            reference[key] = value;
+        }
+
+        // Pick a random threshold to erase values below
+        auto const threshold = *rc::gen::inRange<int>(0, 1000);
+
+        // Erase via for_each
+        map.for_each([threshold](int const & v, Options & opts) {
+            if (v < threshold) {
+                opts.erase = true;
+            }
+        });
+
+        // Update reference
+        std::erase_if(reference, [threshold](auto const & p) {
+            return p.second < threshold;
+        });
+
+        // Verify sizes match
+        RC_ASSERT(map.size().value == reference.size());
+
+        // Verify remaining elements match
+        std::map<Key<int, 16, 15, 1>, int> remaining;
+        map.for_each([&](auto key, int const & v) { remaining[key] = v; });
+        RC_ASSERT(remaining == reference);
+    });
+}
+
+TEST_CASE("property-based for_each erase equivalence with manual erase")
+{
+    rc::check("for_each erase equivalent to collecting and erasing", []() {
+        SlotMap<Key<int, 16, 15, 1>> map1;
+        SlotMap<Key<int, 16, 15, 1>> map2;
+
+        auto const count = *rc::gen::inRange<std::size_t>(1, 50);
+
+        // Build identical maps
+        for (std::size_t i = 0; i < count; ++i) {
+            auto value = *rc::gen::inRange<int>(0, 100);
+            auto key1 = map1.emplace(value);
+            auto key2 = map2.emplace(value);
+            RC_ASSERT(key1 == key2);
+        }
+
+        auto const threshold = *rc::gen::inRange<int>(0, 100);
+
+        // map1: use for_each erase
+        map1.for_each([threshold](int const & v, Options & opts) {
+            if (v < threshold) {
+                opts.erase = true;
+            }
+        });
+
+        // map2: collect keys then erase manually
+        std::vector<Key<int, 16, 15, 1>> keys_to_erase;
+        map2.for_each([&, threshold](auto key, int const & v) {
+            if (v < threshold) {
+                keys_to_erase.push_back(key);
+            }
+        });
+        for (auto key : keys_to_erase) {
+            map2.erase(key);
+        }
+
+        // Both should have same size
+        RC_ASSERT(map1.size().value == map2.size().value);
+
+        // Both should contain the same elements
+        std::map<Key<int, 16, 15, 1>, int> data1, data2;
+        map1.for_each([&](auto key, int const & v) { data1[key] = v; });
+        map2.for_each([&](auto key, int const & v) { data2[key] = v; });
+        RC_ASSERT(data1 == data2);
     });
 }
 

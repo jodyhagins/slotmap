@@ -397,11 +397,11 @@ template <typename F, typename KeyT, typename ValT, typename... OptTs>
 void
 invoke_use(F & func, [[maybe_unused]] KeyT key, ValT & val, OptTs &... opts)
 {
-    if constexpr (std::is_invocable_v<F, KeyT, ValT &, OptTs &...>) {
+    if constexpr (std::is_invocable_v<F &, KeyT, ValT &, OptTs &...>) {
         std::invoke(func, key, val, opts...);
-    } else if constexpr (std::is_invocable_v<F, KeyT, ValT &>) {
+    } else if constexpr (std::is_invocable_v<F &, KeyT, ValT &>) {
         std::invoke(func, key, val);
-    } else if constexpr (std::is_invocable_v<F, ValT &, OptTs &...>) {
+    } else if constexpr (std::is_invocable_v<F &, ValT &, OptTs &...>) {
         std::invoke(func, val, opts...);
     } else {
         std::invoke(func, val);
@@ -473,14 +473,14 @@ contains(key_type key) const
 namespace detail {
 template <typename F, typename KeyT, typename ValT>
 void
-invoke_for_each(F & func, KeyT key, ValT & val, [[maybe_unused]] Break & brk)
+invoke_for_each(F & func, KeyT key, ValT & val, [[maybe_unused]] Options & opts)
 {
-    if constexpr (std::is_invocable_v<F, KeyT, ValT &, Break &>) {
-        std::invoke(func, key, val, brk);
-    } else if constexpr (std::is_invocable_v<F, KeyT, ValT &>) {
+    if constexpr (std::is_invocable_v<F &, KeyT, ValT &, Options &>) {
+        std::invoke(func, key, val, opts);
+    } else if constexpr (std::is_invocable_v<F &, KeyT, ValT &>) {
         std::invoke(func, key, val);
-    } else if constexpr (std::is_invocable_v<F, ValT &, Break &>) {
-        std::invoke(func, val, brk);
+    } else if constexpr (std::is_invocable_v<F &, ValT &, Options &>) {
+        std::invoke(func, val, opts);
     } else {
         std::invoke(func, val);
     }
@@ -493,10 +493,7 @@ SlotMap<KeyT>::size_type
 SlotMap<KeyT>::
 for_each(F && func)
 {
-    auto f = [&func](key_type key, mapped_type const & v, Break & brk) {
-        detail::invoke_for_each(func, key, const_cast<mapped_type &>(v), brk);
-    };
-    return const_cast<SlotMap const &>(*this).for_each(f);
+    return for_each(*this, func);
 }
 
 template <typename KeyT>
@@ -505,24 +502,34 @@ SlotMap<KeyT>::size_type
 SlotMap<KeyT>::
 for_each(F && func) const
 {
+    return for_each(*this, func);
+}
+
+template <typename KeyT>
+SlotMap<KeyT>::size_type
+SlotMap<KeyT>::
+for_each(auto & self, auto & func)
+{
+    using SelfT = std::remove_reference_t<decltype(self)>;
     naked_size_type visited = 0;
-    Break brk{};
+    Options options{};
 
     // Iterate over all slabs
-    for (std::size_t slab_idx = 0; slab_idx < slabs_.size() && not brk.stop;
+    for (std::size_t slab_idx = 0;
+         slab_idx < self.slabs_.size() && not options.stop;
          ++slab_idx)
     {
-        auto const * slab = slabs_[slab_idx].get();
+        auto * slab = self.slabs_[slab_idx].get();
         if (not slab) {
             continue; // Skip recycled slabs
         }
 
         auto const base_idx = static_cast<naked_index_type>(
-            slab_idx << log2_slots_per_slab_);
+            slab_idx << self.log2_slots_per_slab_);
 
         // Iterate over slots in this slab
         for (naked_size_type slot_idx = 0;
-             slot_idx < slots_per_slab_ && not brk.stop;
+             slot_idx < self.slots_per_slab_ && not options.stop;
              ++slot_idx)
         {
             auto const idx = index_type(
@@ -539,8 +546,14 @@ for_each(F && func) const
                     func,
                     key,
                     slab->slot(idx).value(),
-                    brk);
+                    options);
                 ++visited;
+                if constexpr (std::is_const_v<SelfT>) {
+                    assert(not options.erase);
+                } else if (options.erase) {
+                    self.erase(key);
+                    options.erase = false;
+                }
             }
         }
     }

@@ -1064,16 +1064,18 @@ players.use(k1, [](Player & p) {
 
 ```cpp
 struct Options {
+    bool stop = false;
     bool erase = false;
 };
 ```
 
-**Description:** Tag type for `use()` operations that allows the callback to request element erasure.
+**Description:** Control struct for `use()` and `for_each()` operations.
 
 **Members:**
-- `erase` - When set to `true`, the element will be erased after the callback returns.
+- `stop` - Set `true` to stop iteration early (`for_each()` only).
+- `erase` - Set `true` to erase the element after the callback returns.
 
-**Note:** `Options` is only available for non-const `use()`. The const version does not support the erase option since it cannot modify the map.
+**Note:** `Options` is not allowed for const-value callbacks in `use`. Setting `erase` for const-value callbacks in `for_each` is meaningless, and asserts in debug mode.
 
 **Example:**
 
@@ -1170,6 +1172,7 @@ map.use(key, [](int & v, wjh::slotmap::Options & opts) {
 map.use(key, [](MyKey k, int & v, wjh::slotmap::Options & opts) {
     std::cout << "Processing key " << k.index().value << '\n';
     if (v < 0) {
+        /* map.erase(k); --> UB ; don't do it! */
         opts.erase = true;  // Erase negative values
     }
 });
@@ -1375,18 +1378,20 @@ size_type for_each(F && func) const;
 
 **Parameters:**
 - `func` - Callable with one of these signatures:
-  - `void(key_type, mapped_type &, Break &)` - Full access with early exit
+  - `void(key_type, mapped_type &, Options &)` - Full access with stop/erase
   - `void(key_type, mapped_type &)` - Key and value
-  - `void(mapped_type &, Break &)` - Value with early exit
+  - `void(mapped_type &, Options &)` - Value with stop/erase
   - `void(mapped_type &)` - Value only
 
 **Returns:** Number of elements visited (may be less than `size()` if early exit occurred).
 
 **Iteration Order:** Unspecified but consistent within a single call. Not guaranteed to be the same across calls (especially after erase/emplace).
 
-**Early Exit:** Set `brk.stop = true` to stop iteration. Requires a `Break &` parameter in the callable.
+**Options:**
+- `options.stop = true` - Stop iteration after this callback.
+- `options.erase = true` - Erase the current element after the callback returns.
 
-**Note:** The `func` parameter is treated as a universal reference, not a forwarding reference.
+**Note:** The const overload does not support `Options`; setting `erase` asserts in debug mode.
 
 **Example:**
 
@@ -1410,40 +1415,27 @@ map.for_each([&](MyKey key, int & val) {
 });
 
 // Early exit
-auto count = map.for_each([](int & val, wjh::slotmap::Break & brk) {
+auto count = map.for_each([](int & val, wjh::slotmap::Options & opts) {
     if (val > 10) {
-        brk.stop = true;  // Stop iteration
+        opts.stop = true;  // Stop iteration
     }
 });
 std::cout << "Visited " << count.value << " elements\n";
 
-// Const iteration
+// Erase elements matching a predicate
+map.for_each([](int const & val, wjh::slotmap::Options & opts) {
+    if (val < 0) {
+        opts.erase = true;  // Erase negative values
+    }
+});
+
+// Const iteration (no Options support)
 map.for_each([](int const & val) {
     std::cout << val << '\n';
 });
 ```
 
-**CRITICAL WARNING:** Modifying the map during iteration (calling `emplace()` or `erase()`) is undefined behavior. DO NOT modify the map inside the `func` callable.
-
-```cpp
-// UNDEFINED BEHAVIOR - DO NOT DO THIS
-map.for_each([&](MyKey key, int & val) {
-    if (val < 0) {
-        map.erase(key);  // UNDEFINED BEHAVIOR
-    }
-});
-
-// Instead, collect keys to erase, then erase afterward
-std::vector<MyKey> to_erase;
-map.for_each([&](MyKey key, int const & val) {
-    if (val < 0) {
-        to_erase.push_back(key);
-    }
-});
-for (auto key : to_erase) {
-    map.erase(key);
-}
-```
+**Note:** Calling `emplace()` during iteration is undefined behavior. Use `options.erase` for erasure instead of calling `erase()` directly.
 
 ---
 
@@ -2000,38 +1992,41 @@ if (map.contains(player_key) && map.contains(enemy_key)) {
 
 ---
 
-### Deferred Erase (Two-Phase Deletion)
+### Erasing During Iteration
 
-You cannot modify the map during `for_each()`. Collect keys to erase, then erase afterward.
+Use `options.erase` to erase elements during `for_each()`.
 
 ```cpp
 wjh::SlotMap<MyKey> map;
 // ... populate map ...
 
-// WRONG - undefined behavior
-map.for_each([&](MyKey key, int & val) {
+// Erase negative values during iteration
+map.for_each([](int const & val, wjh::slotmap::Options & opts) {
     if (val < 0) {
-        map.erase(key);  // UNDEFINED BEHAVIOR
+        opts.erase = true;
     }
 });
 
-// CORRECT - deferred erase
-std::vector<MyKey> to_erase;
+// Alternative: collect keys first (if you need to process them afterward)
+std::vector<MyKey> negative_keys;
 map.for_each([&](MyKey key, int const & val) {
     if (val < 0) {
-        to_erase.push_back(key);
+        negative_keys.push_back(key);
     }
 });
-for (auto key : to_erase) {
+for (auto key : negative_keys) {
+    // Log, process, then erase
     map.erase(key);
 }
 ```
+
+**Note:** Calling `emplace()` during iteration is still undefined behavior.
 
 ---
 
 ### Iterating with Early Exit
 
-Use the `Break` parameter to stop iteration when a condition is met.
+Use the `Options` parameter to stop iteration when a condition is met.
 
 ```cpp
 #include <wjh/slotmap/SlotMap.hpp>
@@ -2041,7 +2036,7 @@ wjh::SlotMap<MyKey> map;
 
 // Find first element > 100
 MyKey found_key = MyKey::null();
-map.for_each([&](MyKey key, int const & val, wjh::slotmap::Break & brk) {
+map.for_each([&](MyKey key, int const & val, wjh::slotmap::Options & brk) {
     if (val > 100) {
         found_key = key;
         brk.stop = true;

@@ -271,9 +271,9 @@ size_t count = map.for_each([](MyKey k, MyType & v) {
 });
 
 // Early exit
-map.for_each([](MyType & v, wjh::slotmap::Break & brk) {
+map.for_each([](MyType & v, wjh::slotmap::Options & opts) {
     if (some_condition) {
-        brk.stop = true;
+        opts.stop = true;
     }
 });
 
@@ -284,9 +284,9 @@ map.for_each([](MyType & v) {
 ```
 
 The `for_each()` member function template supports multiple signatures:
-- `void(key_type, T &, Break &)` - full access with early exit
+- `void(key_type, T &, Options &)` - full access with early exit
 - `void(key_type, T &)` - key and value
-- `void(T &, Break &)` - value with early exit
+- `void(T &, Options &)` - value with early exit
 - `void(T &)` - value only
 
 Const overloads use `T const &`.
