@@ -251,14 +251,19 @@ public:
      * Iterate over all alive elements.
      *
      * Invokes the callable for each alive element. Supported signatures:
-     * - void(key_type, T &, Options &)
-     * - void(key_type, T &)
-     * - void(T &, Options &)
-     * - void(T &)
+     * - void|bool (key_type, T &, Options &)
+     * - void|bool (key_type, T &)
+     * - void|bool (T &, Options &)
+     * - void|bool (T &)
      *
      * @param func Callable to invoke for each element
      * @return Number of elements visited
      *
+     * Early exit can be achieved in two ways:
+     * - Set options.stop = true within the callback
+     * - Return false from a bool-returning callback (return true to continue)
+     *
+     * @note The callback must return void or bool (compile-time enforced).
      * @note The const overload does not support Options; erase asserts.
      */
     template <typename F>

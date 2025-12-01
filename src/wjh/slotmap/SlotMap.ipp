@@ -472,17 +472,17 @@ contains(key_type key) const
 
 namespace detail {
 template <typename F, typename KeyT, typename ValT>
-void
+auto
 invoke_for_each(F & func, KeyT key, ValT & val, [[maybe_unused]] Options & opts)
 {
     if constexpr (std::is_invocable_v<F &, KeyT, ValT &, Options &>) {
-        std::invoke(func, key, val, opts);
+        return std::invoke(func, key, val, opts);
     } else if constexpr (std::is_invocable_v<F &, KeyT, ValT &>) {
-        std::invoke(func, key, val);
+        return std::invoke(func, key, val);
     } else if constexpr (std::is_invocable_v<F &, ValT &, Options &>) {
-        std::invoke(func, val, opts);
+        return std::invoke(func, val, opts);
     } else {
-        std::invoke(func, val);
+        return std::invoke(func, val);
     }
 }
 } // namespace detail
@@ -541,13 +541,22 @@ for_each(auto & self, auto & func)
                     static_cast<naked_index_type>(base_idx + slot_idx));
                 auto const ver = slab->slot(idx).version();
                 auto const key = key_type(full_idx, ver, user_type{});
+                auto & val = slab->slot(idx).value();
 
-                detail::invoke_for_each(
-                    func,
-                    key,
-                    slab->slot(idx).value(),
-                    options);
+                using R = decltype(
+                    detail::invoke_for_each(func, key, val, options));
+                static_assert(
+                    std::is_void_v<R> || std::is_same_v<R, bool>,
+                    "for_each callback must return void or bool");
+
+                if constexpr (std::is_void_v<R>) {
+                    detail::invoke_for_each(func, key, val, options);
+                } else if (not detail::invoke_for_each(func, key, val, options))
+                {
+                    options.stop = true;
+                }
                 ++visited;
+
                 if constexpr (std::is_const_v<SelfT>) {
                     assert(not options.erase);
                 } else if (options.erase) {

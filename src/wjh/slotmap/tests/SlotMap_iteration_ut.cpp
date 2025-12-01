@@ -121,6 +121,119 @@ TEST_CASE("for_each early exit")
     }
 }
 
+TEST_CASE("for_each early exit via bool return")
+{
+    SlotMap<Key<int, 16, 16>> map;
+
+    for (int i = 0; i < 100; ++i) {
+        (void)map.emplace(i);
+    }
+
+    SUBCASE("return false stops after first element - value only") {
+        std::size_t count = 0;
+        auto visited = map.for_each([&](int const &) {
+            ++count;
+            return false;
+        });
+
+        CHECK(visited.value == 1);
+        CHECK(count == 1);
+    }
+
+    SUBCASE("return false stops after N elements - value only") {
+        std::size_t count = 0;
+        auto visited = map.for_each([&](int const &) {
+            ++count;
+            return count < 5;
+        });
+
+        CHECK(visited.value == 5);
+        CHECK(count == 5);
+    }
+
+    SUBCASE("return true continues iteration - value only") {
+        std::size_t count = 0;
+        auto visited = map.for_each([&](int const &) {
+            ++count;
+            return true;
+        });
+
+        CHECK(visited.value == 100);
+        CHECK(count == 100);
+    }
+
+    SUBCASE("return false with key and value") {
+        std::size_t count = 0;
+        auto visited = map.for_each([&](auto, int const &) {
+            ++count;
+            return false;
+        });
+
+        CHECK(visited.value == 1);
+        CHECK(count == 1);
+    }
+
+    SUBCASE("return false with value and options") {
+        std::size_t count = 0;
+        auto visited = map.for_each([&](int const &, Options &) {
+            ++count;
+            return false;
+        });
+
+        CHECK(visited.value == 1);
+        CHECK(count == 1);
+    }
+
+    SUBCASE("return false with key, value, and options") {
+        std::size_t count = 0;
+        auto visited = map.for_each([&](auto, int const &, Options &) {
+            ++count;
+            return false;
+        });
+
+        CHECK(visited.value == 1);
+        CHECK(count == 1);
+    }
+
+    SUBCASE("bool return with erase option") {
+        // First 3 elements erased, then stop
+        std::size_t count = 0;
+        auto visited = map.for_each([&](int const &, Options & opts) {
+            ++count;
+            opts.erase = true;
+            return count < 3;
+        });
+
+        CHECK(visited.value == 3);
+        CHECK(count == 3);
+        CHECK(map.size().value == 97);
+    }
+
+    SUBCASE("bool return on const map - value only") {
+        auto const & cmap = map;
+        std::size_t count = 0;
+        auto visited = cmap.for_each([&](int const &) {
+            ++count;
+            return count < 10;
+        });
+
+        CHECK(visited.value == 10);
+        CHECK(count == 10);
+    }
+
+    SUBCASE("bool return on const map - key and value") {
+        auto const & cmap = map;
+        std::size_t count = 0;
+        auto visited = cmap.for_each([&](auto, int const &) {
+            ++count;
+            return count < 10;
+        });
+
+        CHECK(visited.value == 10);
+        CHECK(count == 10);
+    }
+}
+
 TEST_CASE("for_each with const map")
 {
     SlotMap<Key<int, 16, 16>> map;
@@ -995,6 +1108,128 @@ TEST_CASE("property-based pop vs erase equivalence")
         for (auto key : keys) {
             RC_ASSERT(map1.contains(key) == map2.contains(key));
         }
+    });
+}
+
+// ============================================================================
+// Property-Based Tests for bool return early exit
+// ============================================================================
+
+TEST_CASE("property-based for_each bool return early exit")
+{
+    rc::check("bool return stops at correct count", []() {
+        SlotMap<Key<int, 16, 15, 1>> map;
+        auto const count = *rc::gen::inRange<std::size_t>(10, 100);
+
+        for (std::size_t i = 0; i < count; ++i) {
+            (void)map.emplace(*rc::gen::arbitrary<int>());
+        }
+
+        auto const stop_after = *rc::gen::inRange<std::size_t>(1, count + 1);
+
+        std::size_t visited_count = 0;
+        auto result = map.for_each([&](int const &) {
+            ++visited_count;
+            return visited_count < stop_after;
+        });
+
+        RC_ASSERT(result.value == stop_after);
+        RC_ASSERT(visited_count == stop_after);
+    });
+}
+
+TEST_CASE("property-based for_each bool return equivalence with Options.stop")
+{
+    rc::check("bool return equivalent to Options.stop", []() {
+        SlotMap<Key<int, 16, 15, 1>> map1;
+        SlotMap<Key<int, 16, 15, 1>> map2;
+
+        auto const count = *rc::gen::inRange<std::size_t>(10, 50);
+
+        // Build identical maps
+        for (std::size_t i = 0; i < count; ++i) {
+            auto value = *rc::gen::arbitrary<int>();
+            auto key1 = map1.emplace(value);
+            auto key2 = map2.emplace(value);
+            RC_ASSERT(key1 == key2);
+        }
+
+        auto const stop_after = *rc::gen::inRange<std::size_t>(1, count + 1);
+
+        // Method 1: bool return
+        std::size_t count1 = 0;
+        std::vector<int> values1;
+        auto result1 = map1.for_each([&](int const & v) {
+            ++count1;
+            values1.push_back(v);
+            return count1 < stop_after;
+        });
+
+        // Method 2: Options.stop
+        std::size_t count2 = 0;
+        std::vector<int> values2;
+        auto result2 = map2.for_each([&](int const & v, Options & opts) {
+            ++count2;
+            values2.push_back(v);
+            if (count2 >= stop_after) {
+                opts.stop = true;
+            }
+        });
+
+        RC_ASSERT(result1.value == result2.value);
+        RC_ASSERT(count1 == count2);
+        RC_ASSERT(values1 == values2);
+    });
+}
+
+TEST_CASE("property-based for_each bool return with erase")
+{
+    rc::check("bool return with erase removes correct elements", []() {
+        SlotMap<Key<int, 16, 15, 1>> map;
+
+        auto const count = *rc::gen::inRange<std::size_t>(10, 50);
+
+        for (std::size_t i = 0; i < count; ++i) {
+            (void)map.emplace(*rc::gen::arbitrary<int>());
+        }
+
+        auto const erase_count = *rc::gen::inRange<std::size_t>(1, count + 1);
+
+        std::size_t visited = 0;
+        auto result = map.for_each([&](int const &, Options & opts) {
+            ++visited;
+            opts.erase = true;
+            return visited < erase_count;
+        });
+
+        RC_ASSERT(result.value == erase_count);
+        RC_ASSERT(visited == erase_count);
+        RC_ASSERT(map.size().value == count - erase_count);
+    });
+}
+
+TEST_CASE("property-based for_each bool return true visits all")
+{
+    rc::check("returning true visits all elements", []() {
+        SlotMap<Key<int, 16, 15, 1>> map;
+        std::map<Key<int, 16, 15, 1>, int> reference;
+
+        auto const count = *rc::gen::inRange<std::size_t>(0, 100);
+
+        for (std::size_t i = 0; i < count; ++i) {
+            auto value = *rc::gen::arbitrary<int>();
+            auto key = map.emplace(value);
+            reference[key] = value;
+        }
+
+        std::map<Key<int, 16, 15, 1>, int> visited;
+        auto result = map.for_each([&](auto key, int const & v) {
+            visited[key] = v;
+            return true;
+        });
+
+        RC_ASSERT(result.value == count);
+        RC_ASSERT(visited == reference);
     });
 }
 

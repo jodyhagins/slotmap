@@ -270,11 +270,17 @@ size_t count = map.for_each([](MyKey k, MyType & v) {
     // Process each element
 });
 
-// Early exit
+// Early exit via Options
 map.for_each([](MyType & v, wjh::slotmap::Options & opts) {
     if (some_condition) {
         opts.stop = true;
     }
+});
+
+// Early exit via bool return (simpler syntax)
+map.for_each([](MyType & v) {
+    // Return false to stop, true to continue
+    return v.health > 0;
 });
 
 // Value-only iteration
@@ -283,11 +289,13 @@ map.for_each([](MyType & v) {
 });
 ```
 
-The `for_each()` member function template supports multiple signatures:
-- `void(key_type, T &, Options &)` - full access with early exit
-- `void(key_type, T &)` - key and value
-- `void(T &, Options &)` - value with early exit
-- `void(T &)` - value only
+The `for_each()` member function template supports multiple signatures. Callbacks can return `void` or `bool`:
+- `void|bool (key_type, T &, Options &)` - full access with early exit
+- `void|bool (key_type, T &)` - key and value
+- `void|bool (T &, Options &)` - value with early exit
+- `void|bool (T &)` - value only
+
+For `bool`-returning callbacks, return `false` to stop iteration early, or `true` to continue. This is equivalent to setting `opts.stop = true` but with simpler syntax.
 
 Const overloads use `T const &`.
 

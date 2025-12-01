@@ -1377,19 +1377,29 @@ size_type for_each(F && func) const;
 **Description:** Iterates over all alive elements, invoking `func` for each. Supports multiple callable signatures for flexibility.
 
 **Parameters:**
-- `func` - Callable with one of these signatures:
-  - `void(key_type, mapped_type &, Options &)` - Full access with stop/erase
-  - `void(key_type, mapped_type &)` - Key and value
-  - `void(mapped_type &, Options &)` - Value with stop/erase
-  - `void(mapped_type &)` - Value only
+- `func` - Callable with one of these signatures (return type can be `void` or `bool`):
+  - `void|bool (key_type, mapped_type &, Options &)` - Full access with stop/erase
+  - `void|bool (key_type, mapped_type &)` - Key and value
+  - `void|bool (mapped_type &, Options &)` - Value with stop/erase
+  - `void|bool (mapped_type &)` - Value only
 
 **Returns:** Number of elements visited (may be less than `size()` if early exit occurred).
 
 **Iteration Order:** Unspecified but consistent within a single call. Not guaranteed to be the same across calls (especially after erase/emplace).
 
+**Early Exit:**
+
+There are two ways to stop iteration early:
+- **Via Options:** Set `options.stop = true` within the callback.
+- **Via bool return:** Return `false` from a `bool`-returning callback to stop (return `true` to continue).
+
+The bool return approach provides simpler syntax when you don't need the `Options` parameter for erasure.
+
 **Options:**
 - `options.stop = true` - Stop iteration after this callback.
 - `options.erase = true` - Erase the current element after the callback returns.
+
+**Note:** The callback must return `void` or `bool`. Other return types will cause a compile-time error (static_assert).
 
 **Note:** The const overload does not support `Options`; setting `erase` asserts in debug mode.
 
@@ -1414,13 +1424,18 @@ map.for_each([&](MyKey key, int & val) {
               << ", value: " << val << '\n';
 });
 
-// Early exit
+// Early exit via Options
 auto count = map.for_each([](int & val, wjh::slotmap::Options & opts) {
     if (val > 10) {
         opts.stop = true;  // Stop iteration
     }
 });
 std::cout << "Visited " << count.value << " elements\n";
+
+// Early exit via bool return (simpler syntax)
+auto count2 = map.for_each([](int const & val) {
+    return val <= 10;  // Return false to stop, true to continue
+});
 
 // Erase elements matching a predicate
 map.for_each([](int const & val, wjh::slotmap::Options & opts) {
@@ -1429,9 +1444,25 @@ map.for_each([](int const & val, wjh::slotmap::Options & opts) {
     }
 });
 
+// Combine bool return with erase (process first 5 negative values)
+std::size_t erased = 0;
+map.for_each([&](int const & val, wjh::slotmap::Options & opts) {
+    if (val < 0) {
+        opts.erase = true;
+        ++erased;
+    }
+    return erased < 5;  // Stop after erasing 5 elements
+});
+
 // Const iteration (no Options support)
 map.for_each([](int const & val) {
     std::cout << val << '\n';
+});
+
+// Const iteration with bool return for early exit
+map.for_each([](int const & val) {
+    std::cout << val << '\n';
+    return val != 42;  // Stop when we find 42
 });
 ```
 
@@ -2026,7 +2057,7 @@ for (auto key : negative_keys) {
 
 ### Iterating with Early Exit
 
-Use the `Options` parameter to stop iteration when a condition is met.
+There are two ways to stop iteration early: using the `Options` parameter or returning `bool` from the callback.
 
 ```cpp
 #include <wjh/slotmap/SlotMap.hpp>
@@ -2034,13 +2065,23 @@ Use the `Options` parameter to stop iteration when a condition is met.
 wjh::SlotMap<MyKey> map;
 // ... populate map ...
 
-// Find first element > 100
+// Method 1: Using Options parameter
 MyKey found_key = MyKey::null();
-map.for_each([&](MyKey key, int const & val, wjh::slotmap::Options & brk) {
+map.for_each([&](MyKey key, int const & val, wjh::slotmap::Options & opts) {
     if (val > 100) {
         found_key = key;
-        brk.stop = true;
+        opts.stop = true;
     }
+});
+
+// Method 2: Using bool return (simpler syntax)
+found_key = MyKey::null();
+map.for_each([&](MyKey key, int const & val) {
+    if (val > 100) {
+        found_key = key;
+        return false;  // Stop iteration
+    }
+    return true;  // Continue iteration
 });
 
 if (not found_key.is_null()) {
@@ -2048,7 +2089,16 @@ if (not found_key.is_null()) {
 } else {
     std::cout << "No element > 100\n";
 }
+
+// Bool return is especially clean for simple conditions
+std::size_t count = 0;
+map.for_each([&](int const & val) {
+    ++count;
+    return count < 10;  // Visit at most 10 elements
+});
 ```
+
+The bool return approach is simpler when you don't need the `Options` parameter for erasure. Use `Options` when you need to both stop early AND erase elements.
 
 ---
 
