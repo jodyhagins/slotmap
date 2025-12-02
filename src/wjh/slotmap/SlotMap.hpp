@@ -144,23 +144,104 @@ struct Statistics
     double bytes_per_object;
 };
 
+
+/**
+ * The number of slots to allocate per slab.
+ *
+ * There are several predefined values, but you can provide an explicit value,
+ * e.g., SlotsPerSlab(1 * 1024 * 1024).
+ *
+ * The SlotMap will allocate memory in chunks, called slabs. Each slab contains
+ * some metadata about the slab, 2^IndexBits slots, and a bitmask
+ * (2^IndexBits)/8 bytes long.
+ *
+ * A slab is an internal implementation detail, but it could have a measurable
+ * impact on performance, especially for smaller IndexBits values.
+ *
+ * For consideration, the size of each slot can be imagined as the size of
+ * `union { size_type; mapped_type; }` plus `sizeof(version_type)`.
+ *
+ * @note  The maximum number of slots possible will be used if it is less than
+ * SlotsPerSlab, which means all slots will be in a single slab.
+ */
+enum class SlotsPerSlab : std::size_t
+{
+    /**
+     * The user provides the slots per slab to the SlotMap constructor. The
+     * default constructor uses SlotsPerSlab::Default.
+     */
+    Dynamic = 0,
+
+    /**
+     * The default is used if no SlotsPerSlab is provided. It is also the value
+     * used in the SlotMap default constructor when Dynamic is specified.
+     */
+    Default = 4096,
+
+    /**
+     * Put all slots into a single slab, which is allocated when the SlotMap is
+     * default constructed.
+     *
+     * @note  Any value larger than 2^IndexBits will put all slots into the same
+     * slab, this is just a convenient way of specifying it. Imagine a family of
+     * SlotMap types.
+     *
+     * @code
+     * template <KeyC KeyT>
+     * using SingleSlotMap = wjh::slotmap::SlotMap<
+     *     wjh::slotmap::Traits<KeyT, SlotsPerSlab::All>>;
+     * @endcode
+     */
+    All = std::size_t(-1),
+};
+
+template <KeyC KeyT, SlotsPerSlab sps>
+struct Traits
+{
+    using key_type = KeyT;
+
+    static constexpr SlotsPerSlab slots_per_slab = sps;
+};
+
+namespace detail {
+template <typename TraitsT>
+struct traits;
+
+template <typename TraitsT>
+requires KeyC<typename TraitsT::key_type>
+struct traits<TraitsT>
+{
+    using type = TraitsT;
+};
+
+template <typename T>
+requires KeyC<T>
+struct traits<T>
+: traits<Traits<T, SlotsPerSlab::Dynamic>>
+{ };
+
+template <typename T>
+using traits_t = typename traits<T>::type;
+} // namespace detail
+
 /**
  * A high-performance slot map container with O(1) insertion, deletion,
  * and lookup using persistent unique keys.
  *
- * @tparam KeyT  an instance of the wjh::slotmap::Key class template.
+ * @tparam TraitsT  A set of traits with types and policies for this SlotMap
+ * instantiation.
  */
-template <typename KeyT>
+template <typename TraitsT>
 class SlotMap
+: detail::traits_t<TraitsT>
 {
-    static_assert(is_key_v<KeyT>);
-
 public:
     // ========================================================================
     // Type Aliases
     // ========================================================================
 
-    using key_type = KeyT;
+    using traits_type = detail::traits_t<TraitsT>;
+    using key_type = typename traits_type::key_type;
     using mapped_type = typename key_type::tag_type;
     using index_type = typename key_type::index_type;
     using version_type = typename key_type::version_type;
@@ -466,8 +547,8 @@ private:
 
 namespace wjh {
 
-template <typename KeyT>
-using SlotMap = slotmap::SlotMap<KeyT>;
+template <typename TraitsT>
+using SlotMap = slotmap::SlotMap<TraitsT>;
 
 } // namespace wjh
 

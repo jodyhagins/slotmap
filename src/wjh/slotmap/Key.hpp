@@ -269,6 +269,9 @@ struct is_key<Key<T, I, V, U>>
 template <typename T>
 inline constexpr bool is_key_v = is_key<T>::value;
 
+template <typename T>
+concept KeyC = is_key_v<T>;
+
 /**
  * The same as Key<T, IndexBits, VersionBits, UserBits>, except the Key class
  * will be trivially default constructible.

@@ -9,14 +9,14 @@
 
 namespace wjh::slotmap {
 
-template <typename KeyT>
-SlotMap<KeyT>::
+template <typename TraitsT>
+SlotMap<TraitsT>::
 SlotMap()
 : SlotMap(compute_default_slab_size())
 { }
 
-template <typename KeyT>
-SlotMap<KeyT>::
+template <typename TraitsT>
+SlotMap<TraitsT>::
 SlotMap(size_type slots_per_slab)
 : slots_per_slab_{slots_per_slab}
 {
@@ -25,8 +25,8 @@ SlotMap(size_type slots_per_slab)
         std::countr_zero(slots_per_slab_));
 }
 
-template <typename KeyT>
-SlotMap<KeyT>::
+template <typename TraitsT>
+SlotMap<TraitsT>::
 SlotMap(SlotMap const & other)
 requires std::is_copy_constructible_v<mapped_type>
 : free_list_head_{other.free_list_head_}
@@ -50,9 +50,9 @@ requires std::is_copy_constructible_v<mapped_type>
     }
 }
 
-template <typename KeyT>
-SlotMap<KeyT> &
-SlotMap<KeyT>::
+template <typename TraitsT>
+SlotMap<TraitsT> &
+SlotMap<TraitsT>::
 operator = (SlotMap const & other)
 requires std::is_copy_constructible_v<mapped_type>
 {
@@ -64,8 +64,8 @@ requires std::is_copy_constructible_v<mapped_type>
     return *this;
 }
 
-template <typename KeyT>
-SlotMap<KeyT>::
+template <typename TraitsT>
+SlotMap<TraitsT>::
 SlotMap(SlotMap && other) noexcept
 : slabs_{std::move(other.slabs_)}
 , free_list_head_{other.free_list_head_}
@@ -83,9 +83,9 @@ SlotMap(SlotMap && other) noexcept
     other.next_slab_base_index_ = 0;
 }
 
-template <typename KeyT>
-SlotMap<KeyT> &
-SlotMap<KeyT>::
+template <typename TraitsT>
+SlotMap<TraitsT> &
+SlotMap<TraitsT>::
 operator = (SlotMap && other) noexcept
 {
     if (this != &other) {
@@ -110,25 +110,25 @@ operator = (SlotMap && other) noexcept
     return *this;
 }
 
-template <typename KeyT>
+template <typename TraitsT>
 bool
-SlotMap<KeyT>::
+SlotMap<TraitsT>::
 is_empty() const noexcept
 {
     return size_ == 0;
 }
 
-template <typename KeyT>
-SlotMap<KeyT>::size_type
-SlotMap<KeyT>::
+template <typename TraitsT>
+SlotMap<TraitsT>::size_type
+SlotMap<TraitsT>::
 size() const noexcept
 {
     return size_type(size_);
 }
 
-template <typename KeyT>
-constexpr SlotMap<KeyT>::size_type
-SlotMap<KeyT>::
+template <typename TraitsT>
+constexpr SlotMap<TraitsT>::size_type
+SlotMap<TraitsT>::
 compute_default_slab_size() noexcept
 {
     constexpr size_type max_slots = end_of_free_list;
@@ -150,9 +150,9 @@ compute_default_slab_size() noexcept
     return size_type(std::bit_floor(max_slots.value));
 }
 
-template <typename KeyT>
+template <typename TraitsT>
 void
-SlotMap<KeyT>::
+SlotMap<TraitsT>::
 validate_slab_size(size_type slots_per_slab)
 {
     if (slots_per_slab.value == 0) {
@@ -174,18 +174,18 @@ validate_slab_size(size_type slots_per_slab)
     }
 }
 
-template <typename KeyT>
-SlotMap<KeyT>::slot_type &
-SlotMap<KeyT>::
+template <typename TraitsT>
+SlotMap<TraitsT>::slot_type &
+SlotMap<TraitsT>::
 get_slot(index_type idx) noexcept
 {
     return const_cast<slot_type &>(
         const_cast<SlotMap const &>(*this).get_slot(idx));
 }
 
-template <typename KeyT>
-SlotMap<KeyT>::slot_type const &
-SlotMap<KeyT>::
+template <typename TraitsT>
+SlotMap<TraitsT>::slot_type const &
+SlotMap<TraitsT>::
 get_slot(index_type idx) const noexcept
 {
     auto const slab_idx = static_cast<std::size_t>(idx >> log2_slots_per_slab_);
@@ -193,9 +193,9 @@ get_slot(index_type idx) const noexcept
     return slabs_[slab_idx]->slot(slot_idx);
 }
 
-template <typename KeyT>
+template <typename TraitsT>
 void
-SlotMap<KeyT>::
+SlotMap<TraitsT>::
 clear_slabs() noexcept
 {
     slabs_.clear();
@@ -206,18 +206,18 @@ clear_slabs() noexcept
     next_slab_base_index_ = 0;
 }
 
-template <typename KeyT>
-SlotMap<KeyT>::slab_type *
-SlotMap<KeyT>::
+template <typename TraitsT>
+SlotMap<TraitsT>::slab_type *
+SlotMap<TraitsT>::
 get_slab(index_type idx) noexcept
 {
     return const_cast<slab_type *>(
         const_cast<SlotMap const &>(*this).get_slab(idx));
 }
 
-template <typename KeyT>
-SlotMap<KeyT>::slab_type const *
-SlotMap<KeyT>::
+template <typename TraitsT>
+SlotMap<TraitsT>::slab_type const *
+SlotMap<TraitsT>::
 get_slab(index_type idx) const noexcept
 {
     auto const slab_idx = static_cast<std::size_t>(idx >> log2_slots_per_slab_);
@@ -227,9 +227,9 @@ get_slab(index_type idx) const noexcept
     return slabs_[slab_idx].get();
 }
 
-template <typename KeyT>
+template <typename TraitsT>
 bool
-SlotMap<KeyT>::
+SlotMap<TraitsT>::
 allocate_new_slab()
 {
     // Check if we've exhausted the index space
@@ -266,9 +266,9 @@ allocate_new_slab()
     return true;
 }
 
-template <typename KeyT>
+template <typename TraitsT>
 void
-SlotMap<KeyT>::
+SlotMap<TraitsT>::
 initialize_slab_free_list(slab_type * slab, index_type base)
 {
     // Link all slots in the slab into a chain
@@ -289,10 +289,10 @@ initialize_slab_free_list(slab_type * slab, index_type base)
     free_list_head_ = size_type(base);
 }
 
-template <typename KeyT>
+template <typename TraitsT>
 template <typename... Args>
-SlotMap<KeyT>::key_type
-SlotMap<KeyT>::
+SlotMap<TraitsT>::key_type
+SlotMap<TraitsT>::
 try_emplace(Args &&... args)
 {
     // Check if free list is empty, allocate new slab if needed
@@ -322,10 +322,10 @@ try_emplace(Args &&... args)
     return key_type(idx, ver, user_type{});
 }
 
-template <typename KeyT>
+template <typename TraitsT>
 template <typename... Args>
-SlotMap<KeyT>::key_type
-SlotMap<KeyT>::
+SlotMap<TraitsT>::key_type
+SlotMap<TraitsT>::
 emplace(Args &&... args)
 {
     auto key = try_emplace(std::forward<Args>(args)...);
@@ -336,9 +336,9 @@ emplace(Args &&... args)
     return key;
 }
 
-template <typename KeyT>
+template <typename TraitsT>
 bool
-SlotMap<KeyT>::
+SlotMap<TraitsT>::
 erase(key_type key)
 {
     auto const key_idx = key.index();
@@ -370,9 +370,9 @@ erase(key_type key)
     return false;
 }
 
-template <typename KeyT>
-std::optional<typename SlotMap<KeyT>::mapped_type>
-SlotMap<KeyT>::
+template <typename TraitsT>
+std::optional<typename SlotMap<TraitsT>::mapped_type>
+SlotMap<TraitsT>::
 pop(key_type key)
 requires std::is_move_constructible_v<mapped_type>
 {
@@ -461,13 +461,14 @@ check_slot_alive_bit(
 
 } // namespace detail
 
-template <typename KeyT>
+template <typename TraitsT>
 bool
-SlotMap<KeyT>::
+SlotMap<TraitsT>::
 use(auto & self, key_type key, auto & func)
 {
     using detail::use_callback_wants_options;
     using SelfT = std::remove_reference_t<decltype(self)>;
+    using KeyT = key_type;
     using FuncT = decltype(func);
     auto const key_idx = key.index();
     if (auto * slab = self.get_slab(key_idx)) {
@@ -500,27 +501,27 @@ use(auto & self, key_type key, auto & func)
     return false;
 }
 
-template <typename KeyT>
+template <typename TraitsT>
 template <typename F>
 bool
-SlotMap<KeyT>::
+SlotMap<TraitsT>::
 use(key_type key, F && func)
 {
     return use(*this, key, func);
 }
 
-template <typename KeyT>
+template <typename TraitsT>
 template <typename F>
 bool
-SlotMap<KeyT>::
+SlotMap<TraitsT>::
 use(key_type key, F && func) const
 {
     return use(*this, key, func);
 }
 
-template <typename KeyT>
+template <typename TraitsT>
 bool
-SlotMap<KeyT>::
+SlotMap<TraitsT>::
 contains(key_type key) const
 {
     return use(key, [](mapped_type const &) {});
@@ -543,27 +544,27 @@ invoke_for_each(F & func, KeyT key, ValT & val, [[maybe_unused]] Options & opts)
 }
 } // namespace detail
 
-template <typename KeyT>
+template <typename TraitsT>
 template <typename F>
-SlotMap<KeyT>::size_type
-SlotMap<KeyT>::
+SlotMap<TraitsT>::size_type
+SlotMap<TraitsT>::
 for_each(F && func)
 {
     return for_each(*this, func);
 }
 
-template <typename KeyT>
+template <typename TraitsT>
 template <typename F>
-SlotMap<KeyT>::size_type
-SlotMap<KeyT>::
+SlotMap<TraitsT>::size_type
+SlotMap<TraitsT>::
 for_each(F && func) const
 {
     return for_each(*this, func);
 }
 
-template <typename KeyT>
-SlotMap<KeyT>::size_type
-SlotMap<KeyT>::
+template <typename TraitsT>
+SlotMap<TraitsT>::size_type
+SlotMap<TraitsT>::
 for_each(auto & self, auto & func)
 {
     using SelfT = std::remove_reference_t<decltype(self)>;
@@ -619,9 +620,9 @@ for_each(auto & self, auto & func)
     return size_type(visited);
 }
 
-template <typename KeyT>
+template <typename TraitsT>
 void
-SlotMap<KeyT>::
+SlotMap<TraitsT>::
 swap(SlotMap & other) noexcept
 {
     using std::swap;
@@ -635,9 +636,9 @@ swap(SlotMap & other) noexcept
     swap(next_slab_base_index_, other.next_slab_base_index_);
 }
 
-template <typename KeyT>
+template <typename TraitsT>
 void
-SlotMap<KeyT>::
+SlotMap<TraitsT>::
 clear()
 {
     // Start with empty free list - we'll rebuild it
@@ -691,17 +692,17 @@ clear()
     size_ = 0;
 }
 
-template <typename KeyT>
+template <typename TraitsT>
 void
-SlotMap<KeyT>::
+SlotMap<TraitsT>::
 reset()
 {
     clear_slabs();
 }
 
-template <typename KeyT>
+template <typename TraitsT>
 void
-SlotMap<KeyT>::
+SlotMap<TraitsT>::
 reserve(size_type n)
 {
     // Calculate how many total slots we need
@@ -715,9 +716,9 @@ reserve(size_type n)
     }
 }
 
-template <typename KeyT>
+template <typename TraitsT>
 void
-SlotMap<KeyT>::
+SlotMap<TraitsT>::
 try_recycle_slab(std::size_t slab_idx)
 {
     auto * slab = slabs_[slab_idx].get();
@@ -757,9 +758,9 @@ try_recycle_slab(std::size_t slab_idx)
     next_slab_base_index_ += slots_per_slab_;
 }
 
-template <typename KeyT>
-SlotMap<KeyT>::statistics_type
-SlotMap<KeyT>::
+template <typename TraitsT>
+SlotMap<TraitsT>::statistics_type
+SlotMap<TraitsT>::
 statistics() const noexcept
 {
     statistics_type stats{};
