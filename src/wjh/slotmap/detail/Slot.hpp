@@ -8,6 +8,7 @@
 #define WJH_SLOTMAP_210A58D772C142B58C2FDB99480EA93F
 
 #include <array>
+#include <bit>
 #include <cassert>
 #include <cstddef>
 #include <cstring>
@@ -75,7 +76,12 @@ public:
      * @post  This instance will be FREE, with a version of 0 and the linking
      * index to the next free node in the list will be @p next.
      */
-    constexpr explicit Slot(index_type next);
+    constexpr explicit Slot(index_type next)
+    : version_bytes_{}
+    {
+        set_free();
+        set_next(next);
+    }
 
     // Non-copyable, non-movable (managed by Slab)
     Slot(Slot const &) = delete;
@@ -90,18 +96,45 @@ public:
     // ========================================================================
 
     [[nodiscard]]
-    constexpr version_type version() const noexcept;
+    constexpr version_type version() const noexcept
+    {
+        if constexpr (has_embedded_alive_bit) {
+            return version_type(naked_version_type(
+                std::bit_cast<naked_version_type>(version_bytes_) &
+                ~alive_bit));
+        } else {
+            return std::bit_cast<version_type>(version_bytes_);
+        }
+    }
 
-    constexpr void set_version(version_type v) noexcept;
+    constexpr void set_version(version_type v) noexcept
+    {
+        if constexpr (has_embedded_alive_bit) {
+            assert(not (v.value & alive_bit));
+            auto const ver = std::bit_cast<naked_version_type>(version_bytes_);
+            version_bytes_ = std::bit_cast<decltype(version_bytes_)>(
+                naked_version_type(v.value | (ver & alive_bit)));
+        } else {
+            version_bytes_ = std::bit_cast<decltype(version_bytes_)>(v);
+        }
+    }
 
     // ========================================================================
     // Free-list access (only valid when FREE)
     // ========================================================================
 
     [[nodiscard]]
-    constexpr index_type next() const noexcept;
+    constexpr index_type next() const noexcept
+    {
+        assert(is_free());
+        return *get<index_type>();
+    }
 
-    constexpr void set_next(index_type i) noexcept;
+    constexpr void set_next(index_type i) noexcept
+    {
+        assert(is_free());
+        *get<index_type>() = i;
+    }
 
     // ========================================================================
     // Value access (only valid when ALIVE)
@@ -114,7 +147,15 @@ public:
      * @post Slot is in ALIVE state
      */
     template <typename... Args>
-    constexpr value_type & emplace(Args &&... args);
+    constexpr value_type & emplace(Args &&... args)
+    {
+        assert(is_free());
+        auto ptr = std::construct_at(
+            std::bit_cast<value_type *>(storage_.data()),
+            std::forward<Args>(args)...);
+        set_alive();
+        return *ptr;
+    }
 
     /**
      * Destroy the stored value
@@ -123,7 +164,12 @@ public:
      * @post Slot is in FREE state (next field may contain garbage)
      */
     constexpr void destroy() noexcept(
-        std::is_nothrow_destructible_v<value_type>);
+        std::is_nothrow_destructible_v<value_type>)
+    {
+        assert(is_alive());
+        std::destroy_at(get<value_type>());
+        set_free();
+    }
 
     /**
      * Access the stored value
@@ -131,10 +177,18 @@ public:
      * @pre Slot must be in ALIVE state
      */
     [[nodiscard]]
-    constexpr value_type & value() noexcept;
+    constexpr value_type & value() noexcept
+    {
+        assert(is_alive());
+        return *get<value_type>();
+    }
 
     [[nodiscard]]
-    constexpr value_type const & value() const noexcept;
+    constexpr value_type const & value() const noexcept
+    {
+        assert(is_alive());
+        return *get<value_type>();
+    }
 
     // ========================================================================
     // Alive bit support
@@ -157,7 +211,14 @@ public:
      *       it always returns true and the slab's bitmap must be consulted.
      */
     [[nodiscard]]
-    constexpr bool is_alive() const noexcept;
+    constexpr bool is_alive() const noexcept
+    {
+        if constexpr (has_embedded_alive_bit) {
+            auto version = std::bit_cast<naked_version_type>(version_bytes_);
+            return version & alive_bit;
+        }
+        return true;
+    }
 
     /**
      * Get the raw version storage including alive bit (if embedded).
@@ -170,7 +231,10 @@ public:
      * @note Only meaningful when has_embedded_alive_bit is true
      */
     [[nodiscard]]
-    constexpr naked_version_type version_with_alive_bit() const noexcept;
+    constexpr naked_version_type version_with_alive_bit() const noexcept
+    {
+        return std::bit_cast<naked_version_type>(version_bytes_);
+    }
 
     /**
      * Compute expected version value with alive bit set.
@@ -205,13 +269,43 @@ private:
     std::array<std::byte, sizeof(version_type)> version_bytes_;
 
     template <typename U>
-    constexpr U * get();
-    template <typename U>
-    constexpr U const * get() const;
+    constexpr U * get()
+    {
+        return std::launder(reinterpret_cast<U *>(storage_.data()));
+    }
 
-    constexpr void set_free();
-    constexpr bool is_free() const;
-    constexpr void set_alive();
+    template <typename U>
+    constexpr U const * get() const
+    {
+        return std::launder(reinterpret_cast<U const *>(storage_.data()));
+    }
+
+    constexpr void set_free()
+    {
+        if constexpr (has_embedded_alive_bit) {
+            auto version = std::bit_cast<naked_version_type>(version_bytes_);
+            version &= ~alive_bit;
+            version_bytes_ = std::bit_cast<decltype(version_bytes_)>(version);
+        }
+    }
+
+    constexpr bool is_free() const
+    {
+        if constexpr (has_embedded_alive_bit) {
+            auto version = std::bit_cast<naked_version_type>(version_bytes_);
+            return not (version & alive_bit);
+        }
+        return true;
+    }
+
+    constexpr void set_alive()
+    {
+        if constexpr (has_embedded_alive_bit) {
+            auto version = std::bit_cast<naked_version_type>(version_bytes_);
+            version |= alive_bit;
+            version_bytes_ = std::bit_cast<decltype(version_bytes_)>(version);
+        }
+    }
 
     static constexpr auto version_digits =
         std::numeric_limits<naked_version_type>::digits;
@@ -220,7 +314,5 @@ private:
 };
 
 } // namespace wjh::slotmap::detail
-
-#include "Slot.ipp"
 
 #endif // WJH_SLOTMAP_210A58D772C142B58C2FDB99480EA93F
