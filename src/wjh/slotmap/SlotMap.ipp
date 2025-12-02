@@ -428,26 +428,26 @@ inline constexpr bool use_callback_wants_options =
 
 namespace detail {
 
-/**
- * Check if a slot is alive using the optimal method for the slot type.
- *
- * When the slot has an embedded alive bit (non-power-of-2 version bits),
- * read directly from the slot for cache locality. Otherwise, use the bitmap.
- *
- * This should only be used in cases where just the slot is accessed.
- */
-template <typename SlotT, typename SlabT, typename IndexT>
+template <
+    bool use_alive_bit_for_lookup,
+    typename VersionT,
+    typename SlotT,
+    typename SlabT,
+    typename IndexT>
 [[nodiscard]]
 constexpr bool
-check_slot_alive_bit(
-    SlotT const & slot,
-    SlabT const * slab,
-    IndexT index) noexcept
+is_valid(VersionT version, SlotT const & slot, SlabT const * slab, IndexT index)
 {
-    if constexpr (SlotT::has_embedded_alive_bit) {
-        return slot.is_alive();
+    if constexpr (use_alive_bit_for_lookup) {
+        static_assert(SlotT::has_embedded_alive_bit);
+        // Fast path: Combined version+alive check in single comparison
+        // This reads version_bytes_ once and checks both version match
+        // and alive bit simultaneously
+        return slot.version_with_alive_bit() ==
+            SlotT::make_alive_version(version);
     } else {
-        return slab->is_alive(index);
+        // Standard path: Separate version check and alive check
+        return slot.version() == version && slab->is_alive(index);
     }
 }
 
@@ -465,10 +465,12 @@ use(auto & self, key_type key, auto & func)
     auto const key_idx = key.index();
     if (auto * slab = self.storage_get_slab(key_idx)) {
         auto const slot_idx = self.storage_slot_index(key_idx);
-
-        if (auto & slot = slab->slot(slot_idx);
-            slot.version() == key.version() &&
-            check_slot_alive_bit(slot, slab, slot_idx))
+        auto & slot = slab->slot(slot_idx);
+        if (detail::is_valid<traits_type::use_alive_bit_for_lookup>(
+                key.version(),
+                slot,
+                slab,
+                slot_idx))
         {
             auto & value = slot.value();
             using ValT = decltype(value);

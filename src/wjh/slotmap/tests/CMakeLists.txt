@@ -57,6 +57,8 @@ add_slotmap_test(
         SlotMap_ut.cpp
         SlotMap_use_ut.cpp
         SlotMap_statistics_ut.cpp
+        SlotMap_single_slab_ut.cpp
+        SlotMap_traits_ut.cpp
 )
 
 add_slotmap_test(
@@ -78,11 +80,4 @@ add_slotmap_test(
     NAME "SlotMap Edge Cases"
     SOURCES
         SlotMap_edge_cases_ut.cpp
-)
-
-add_slotmap_test(
-    TARGET slotmap_single_slab_ut
-    PREFIX "SlotMap Single-Slab"
-    SOURCES
-        SlotMap_single_slab_ut.cpp
 )

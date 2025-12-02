@@ -78,11 +78,15 @@ using SmallKey32_32 = wjh::slotmap::Key<SmallValue, 32, 32>;
 using LargeKey32_32 = wjh::slotmap::Key<LargeValue, 32, 32>;
 
 template <typename KeyT>
-using DynSlotMap = wjh::SlotMap<
-    wjh::slotmap::Traits<KeyT, wjh::slotmap::SlotsPerSlab::Dynamic>>;
+using DynSlotMap = wjh::SlotMap<wjh::slotmap::Traits<
+    KeyT,
+    wjh::slotmap::SlotsPerSlab::Dynamic,
+    wjh::slotmap::UseAliveBitForLookup::Yes>>;
 template <typename KeyT>
-using AllSlotMap =
-    wjh::SlotMap<wjh::slotmap::Traits<KeyT, wjh::slotmap::SlotsPerSlab::All>>;
+using AllSlotMap = wjh::SlotMap<wjh::slotmap::Traits<
+    KeyT,
+    wjh::slotmap::SlotsPerSlab::All,
+    wjh::slotmap::UseAliveBitForLookup::Yes>>;
 
 // SlotMap type aliases
 // For small index spaces (32-bit keys with <= ~64K slots), use

@@ -151,11 +151,7 @@ TEST_CASE("SlotMap: free list sentinel storage in Slot")
     //
     // The Slab's slot_type uses size_type (not index_type) for the next-link,
     // which allows storing end_of_free_list (one past max index).
-
     using Map = SlotMap<Key<int, 8, 8, 16>>;
-    using index_type = Map::index_type;
-    using size_type = Map::size_type;
-    using version_type = Map::version_type;
 
     // end_of_free_list = 256 (0x100), which doesn't fit in uint8_t (index_type)
     // but does fit in uint16_t (size_type)
@@ -164,8 +160,7 @@ TEST_CASE("SlotMap: free list sentinel storage in Slot")
 
     SUBCASE("size_type slot can store sentinel") {
         // Create a slot using size_type for the next-link (as Slab now does)
-        using slot_type =
-            wjh::slotmap::detail::Slot<int, size_type, version_type>;
+        using slot_type = Map::slot_type;
         alignas(slot_type) std::byte storage[sizeof(slot_type)]{};
         auto & slot = *::new (storage) slot_type{};
 
@@ -176,26 +171,6 @@ TEST_CASE("SlotMap: free list sentinel storage in Slot")
         CHECK(slot.next() == sentinel);
 
         slot.~slot_type();
-    }
-
-    SUBCASE("index_type slot would truncate sentinel") {
-        // This demonstrates that index_type cannot hold the sentinel
-        // (it wraps around to 0 due to overflow)
-        using bad_slot_type =
-            wjh::slotmap::detail::Slot<int, index_type, version_type>;
-        alignas(bad_slot_type) std::byte storage[sizeof(bad_slot_type)]{};
-        auto & slot = *::new (storage) bad_slot_type{};
-
-        // Store a truncated version (simulating what would happen)
-        auto truncated = index_type(
-            static_cast<index_type::value_type>(sentinel.value));
-        slot.set_next(truncated);
-
-        // The retrieved value is NOT the sentinel - it wrapped to 0
-        CHECK(slot.next() != size_type(sentinel));
-        CHECK(slot.next().value == 0u); // 0x100 truncated to uint8_t = 0
-
-        slot.~bad_slot_type();
     }
 }
 

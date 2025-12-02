@@ -18,16 +18,16 @@
 
 namespace wjh::slotmap::detail {
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
-Slab<T, IndexT, VersionT, SizeT>::
+template <typename TraitsT>
+Slab<TraitsT>::
 Slab(size_type slots_per_slab) noexcept
 : dead_count_{0}
 , slots_per_slab_{slots_per_slab}
 { }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
+template <typename TraitsT>
 constexpr std::size_t
-Slab<T, IndexT, VersionT, SizeT>::
+Slab<TraitsT>::
 total_bytes_needed(size_type slots_per_slab)
 {
     static_assert(std::is_unsigned_v<naked_size_type>);
@@ -39,9 +39,9 @@ total_bytes_needed(size_type slots_per_slab)
     return bytes_needed;
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
-std::unique_ptr<Slab<T, IndexT, VersionT, SizeT>>
-Slab<T, IndexT, VersionT, SizeT>::
+template <typename TraitsT>
+std::unique_ptr<Slab<TraitsT>>
+Slab<TraitsT>::
 create(size_type slots_per_slab)
 {
     static_assert(noexcept(Slab(slots_per_slab)));
@@ -68,21 +68,21 @@ create(size_type slots_per_slab)
     return std::unique_ptr<Slab>(slab);
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
+template <typename TraitsT>
 template <typename ValT>
-std::unique_ptr<Slab<T, IndexT, VersionT, SizeT>>
-Slab<T, IndexT, VersionT, SizeT>::
+std::unique_ptr<Slab<TraitsT>>
+Slab<TraitsT>::
 create(ValT slots_per_slab)
 requires requires { size_type(slots_per_slab); }
 {
     return create(size_type(slots_per_slab));
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
-std::unique_ptr<Slab<T, IndexT, VersionT, SizeT>>
-Slab<T, IndexT, VersionT, SizeT>::
+template <typename TraitsT>
+std::unique_ptr<Slab<TraitsT>>
+Slab<TraitsT>::
 clone() const
-requires std::is_copy_constructible_v<T>
+requires std::is_copy_constructible_v<value_type>
 {
     auto const slab_size = size_type(slots_per_slab_);
 
@@ -140,8 +140,8 @@ requires std::is_copy_constructible_v<T>
     }
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
-Slab<T, IndexT, VersionT, SizeT>::
+template <typename TraitsT>
+Slab<TraitsT>::
 ~Slab()
 {
     auto * const slot_array = this->slots();
@@ -156,18 +156,18 @@ Slab<T, IndexT, VersionT, SizeT>::
     }
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
+template <typename TraitsT>
 void
-Slab<T, IndexT, VersionT, SizeT>::
+Slab<TraitsT>::
 operator delete (void * ptr)
 {
     ::operator delete (ptr, std::align_val_t{alignof(Slab)});
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
+template <typename TraitsT>
 template <typename... Args>
-Slab<T, IndexT, VersionT, SizeT>::EmplaceResult
-Slab<T, IndexT, VersionT, SizeT>::
+typename Slab<TraitsT>::EmplaceResult
+Slab<TraitsT>::
 emplace(index_type index, Args &&... args)
 {
     assert(not is_alive(index));
@@ -178,9 +178,9 @@ emplace(index_type index, Args &&... args)
     return result;
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
+template <typename TraitsT>
 bool
-Slab<T, IndexT, VersionT, SizeT>::
+Slab<TraitsT>::
 destroy(index_type index)
 {
     assert(is_alive(index));
@@ -203,9 +203,9 @@ destroy(index_type index)
     return true;
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
+template <typename TraitsT>
 bool
-Slab<T, IndexT, VersionT, SizeT>::
+Slab<TraitsT>::
 is_alive(index_type index) const noexcept
 {
     auto const byte_idx = static_cast<std::size_t>(index) / 8;
@@ -213,10 +213,10 @@ is_alive(index_type index) const noexcept
     return (bitmap()[byte_idx] & (std::byte{1} << bit_idx)) != std::byte{0};
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
+template <typename TraitsT>
 template <typename F>
-Slab<T, IndexT, VersionT, SizeT>::size_type
-Slab<T, IndexT, VersionT, SizeT>::
+typename Slab<TraitsT>::size_type
+Slab<TraitsT>::
 for_each_alive(F && func) const
 {
     auto const * bm = bitmap();
@@ -295,50 +295,50 @@ for_each_alive(F && func) const
     return size_type(visited);
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
+template <typename TraitsT>
 [[nodiscard]]
-Slab<T, IndexT, VersionT, SizeT>::slot_type &
-Slab<T, IndexT, VersionT, SizeT>::
+typename Slab<TraitsT>::slot_type &
+Slab<TraitsT>::
 slot(index_type index) noexcept
 {
     return slots()[index];
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
-Slab<T, IndexT, VersionT, SizeT>::slot_type const &
-Slab<T, IndexT, VersionT, SizeT>::
+template <typename TraitsT>
+typename Slab<TraitsT>::slot_type const &
+Slab<TraitsT>::
 slot(index_type index) const noexcept
 {
     return slots()[index];
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
-Slab<T, IndexT, VersionT, SizeT>::size_type
-Slab<T, IndexT, VersionT, SizeT>::
+template <typename TraitsT>
+typename Slab<TraitsT>::size_type
+Slab<TraitsT>::
 slots_per_slab() const noexcept
 {
     return slots_per_slab_;
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
-Slab<T, IndexT, VersionT, SizeT>::size_type
-Slab<T, IndexT, VersionT, SizeT>::
+template <typename TraitsT>
+typename Slab<TraitsT>::size_type
+Slab<TraitsT>::
 dead_count() const noexcept
 {
     return dead_count_;
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
+template <typename TraitsT>
 bool
-Slab<T, IndexT, VersionT, SizeT>::
+Slab<TraitsT>::
 can_be_recycled() const noexcept
 {
     return dead_count_ == slots_per_slab_;
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
+template <typename TraitsT>
 void
-Slab<T, IndexT, VersionT, SizeT>::
+Slab<TraitsT>::
 recycle(index_type first_index, size_type last_next)
 {
     assert(can_be_recycled());
@@ -358,42 +358,42 @@ recycle(index_type first_index, size_type last_next)
     std::memset(bitmap(), 0, bitmap_size(size_type(slots_per_slab_)));
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
+template <typename TraitsT>
 constexpr std::size_t
-Slab<T, IndexT, VersionT, SizeT>::
+Slab<TraitsT>::
 bitmap_size(size_type slots_per_slab) noexcept
 {
     return (static_cast<std::size_t>(slots_per_slab) + 7) / 8;
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
-Slab<T, IndexT, VersionT, SizeT>::slot_type *
-Slab<T, IndexT, VersionT, SizeT>::
+template <typename TraitsT>
+typename Slab<TraitsT>::slot_type *
+Slab<TraitsT>::
 slots() noexcept
 {
     return std::launder(reinterpret_cast<slot_type *>(this + 1));
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
-Slab<T, IndexT, VersionT, SizeT>::slot_type const *
-Slab<T, IndexT, VersionT, SizeT>::
+template <typename TraitsT>
+typename Slab<TraitsT>::slot_type const *
+Slab<TraitsT>::
 slots() const noexcept
 {
     return std::launder(reinterpret_cast<slot_type const *>(this + 1));
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
+template <typename TraitsT>
 std::byte *
-Slab<T, IndexT, VersionT, SizeT>::
+Slab<TraitsT>::
 bitmap() noexcept
 {
     auto * slot_end = reinterpret_cast<std::byte *>(slots() + slots_per_slab_);
     return std::launder(slot_end);
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
+template <typename TraitsT>
 std::byte const *
-Slab<T, IndexT, VersionT, SizeT>::
+Slab<TraitsT>::
 bitmap() const noexcept
 {
     auto const * slot_end = reinterpret_cast<std::byte const *>(
@@ -401,9 +401,9 @@ bitmap() const noexcept
     return std::launder(slot_end);
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
+template <typename TraitsT>
 void
-Slab<T, IndexT, VersionT, SizeT>::
+Slab<TraitsT>::
 set_alive(index_type index, bool alive) noexcept
 {
     auto const byte_idx = static_cast<std::size_t>(index) / 8;
@@ -417,9 +417,9 @@ set_alive(index_type index, bool alive) noexcept
     }
 }
 
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
+template <typename TraitsT>
 bool
-Slab<T, IndexT, VersionT, SizeT>::
+Slab<TraitsT>::
 are_all_dead() const
 {
     auto const limit = bitmap_size(size_type(slots_per_slab_));

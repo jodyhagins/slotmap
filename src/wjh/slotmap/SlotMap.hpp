@@ -191,13 +191,32 @@ enum class SlotsPerSlab : std::size_t
      * @code
      * template <KeyC KeyT>
      * using SingleSlotMap = wjh::slotmap::SlotMap<
-     *     wjh::slotmap::Traits<KeyT, SlotsPerSlab::All>>;
+     *     wjh::slotmap::Traits<
+     *         KeyT,
+     *         SlotsPerSlab::All,
+     *         UseAliveBitForLookup::Yes>>;
      * @endcode
      */
     All = std::size_t(-1),
 };
 
-template <KeyC, SlotsPerSlab>
+/**
+ * Controls whether use() reads the alive-bit from Slot or the bitmap.
+ *
+ * true  (default): Faster lookups, slightly slower insert/erase
+ * false: Slower lookups, slightly faster insert/erase
+ *
+ * @note  If Key::version_bits is not a power of two, then there are no extra
+ * bits in the version to keep track of an alive bit. In such cases,
+ * UseAliveBitForLookup is ignored, because there is no alive bit ti use.
+ */
+enum class UseAliveBitForLookup : bool
+{
+    No = false,
+    Yes = true,
+};
+
+template <KeyC, SlotsPerSlab, UseAliveBitForLookup>
 struct Traits;
 
 } // namespace wjh::slotmap
@@ -211,20 +230,29 @@ namespace wjh::slotmap {
  *
  * @tparam KeyT The key type (must satisfy KeyC concept)
  * @tparam nslots The slots per slab configuration
+ * @tparam alive_bit Whether to use an available live bit to speed up lookup.
  */
-template <KeyC KeyT, SlotsPerSlab nslots>
+template <KeyC KeyT, SlotsPerSlab nslots, UseAliveBitForLookup alive_bit>
 struct Traits
-: detail::storage_policy_t<KeyT, nslots>
+: detail::storage_policy_t<KeyT, nslots, alive_bit>
 {
 protected:
-    using storage_policy = detail::storage_policy_t<KeyT, nslots>;
+    using storage_policy = detail::storage_policy_t<KeyT, nslots, alive_bit>;
     using storage_policy::storage_policy;
 
 public:
     using key_type = KeyT;
+    using mapped_type = typename key_type::tag_type;
+    using index_type = typename key_type::index_type;
+    using version_type = typename key_type::version_type;
+    using user_type = typename key_type::user_type;
+
     using naked_size_type = typename storage_policy::naked_size_type;
 
-    static constexpr SlotsPerSlab slots_per_slab = nslots;
+    static constexpr auto slots_per_slab = nslots;
+    static constexpr bool allow_alive_bit = bool(alive_bit);
+    static constexpr bool use_alive_bit_for_lookup =
+        detail::has_alive_bit<Traits>();
 };
 
 /**
@@ -250,6 +278,8 @@ public:
     using version_type = typename key_type::version_type;
     using user_type = typename key_type::user_type;
     using size_type = typename key_type::size_type;
+    using slab_type = typename traits_type::slab_type;
+    using slot_type = typename slab_type::slot_type;
     using statistics_type = Statistics;
 
     // ========================================================================
@@ -527,8 +557,6 @@ public:
 private:
     using naked_size_type = typename size_type::value_type;
     using naked_index_type = typename index_type::value_type;
-    using slab_type = typename traits_type::slab_type;
-    using slot_type = typename slab_type::slot_type;
 
     static constexpr bool is_single_slab = traits_type::is_single_slab;
 

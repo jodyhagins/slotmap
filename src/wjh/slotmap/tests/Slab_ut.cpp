@@ -52,11 +52,14 @@ DefineStrongType(Index64, 64);
 DefineStrongType(Version64, 64);
 DefineStrongType(Size64, 64);
 
-using TestSlab = Slab<int, Index32, Version32, Size64>;
+template <typename T, typename I, typename V, typename S>
+using SlabTraits = wjh::slotmap::detail::SlabTraits<T, I, V, S, true>;
+
+using TestSlab = Slab<SlabTraits<int, Index32, Version32, Size64>>;
 
 // 2-bit version for testing version exhaustion
 DefineStrongType(Version2, 2);
-using SmallVersionSlab = Slab<int, Index32, Version2, Size64>;
+using SmallVersionSlab = Slab<SlabTraits<int, Index32, Version2, Size64>>;
 
 // ============================================================================
 // Basic Slab Tests
@@ -340,7 +343,7 @@ TEST_CASE("Slab: destructor destroys alive slots")
     using Index = Index32;
     using Version = Version32;
     using Size = Size64;
-    using TrackerSlab = Slab<Tracker, Index, Version, Size>;
+    using TrackerSlab = Slab<SlabTraits<Tracker, Index, Version, Size>>;
 
     SUBCASE("destructor calls destroy on alive slots") {
         destructor_count = 0;
@@ -399,7 +402,7 @@ TEST_CASE("Slab: non-trivial value types")
     using Index = Index32;
     using Version = Version32;
     using Size = Size64;
-    using StringSlab = Slab<std::string, Index, Version, Size>;
+    using StringSlab = Slab<SlabTraits<std::string, Index, Version, Size>>;
 
     auto slab = StringSlab::create(4u);
 
@@ -697,7 +700,7 @@ TEST_CASE("Slab: different type configurations")
 {
     SUBCASE("16-bit indices") {
         using Size = Size32;
-        using Slab16 = Slab<int, Index16, Version16, Size>;
+        using Slab16 = Slab<SlabTraits<int, Index16, Version16, Size>>;
         auto slab = Slab16::create(4u);
 
         slab->slot(0).set_next(Slab16::index_type{65535});
@@ -710,7 +713,7 @@ TEST_CASE("Slab: different type configurations")
 
     SUBCASE("64-bit indices") {
         using Size = Size64;
-        using Slab64 = Slab<int, Index64, Version64, Size>;
+        using Slab64 = Slab<SlabTraits<int, Index64, Version64, Size>>;
         auto slab = Slab64::create(4u);
 
         slab->slot(0).set_next(Slab64::index_type{0xFFFF'FFFF'FFFF'FFFF});
@@ -722,7 +725,7 @@ TEST_CASE("Slab: different type configurations")
 
     SUBCASE("mixed sizes") {
         using Size = Size32;
-        using MixedSlab = Slab<int, Index8, Version4, Size>;
+        using MixedSlab = Slab<SlabTraits<int, Index8, Version4, Size>>;
         auto slab = MixedSlab::create(4u);
 
         REQUIRE(MixedSlab::max_version == 15); // 4 bits = 0xF

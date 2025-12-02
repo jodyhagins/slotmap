@@ -10,7 +10,7 @@
 namespace wjh::slotmap::detail {
 
 // Forward declaration
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
+template <typename TraitsT>
 class Slab;
 
 /**
@@ -44,7 +44,7 @@ inline constexpr bool use_single_slab_storage_v =
  * Uses a unique_ptr<Slab> instead of vector<unique_ptr<Slab>>, eliminating
  * vector indirection for small slot maps.
  */
-template <typename KeyT>
+template <typename KeyT, bool AllowAliveBit>
 struct single_slab_storage_policy
 {
     using mapped_type = typename KeyT::tag_type;
@@ -53,7 +53,13 @@ struct single_slab_storage_policy
     using size_type = typename KeyT::size_type;
     using naked_size_type = typename size_type::value_type;
     using naked_index_type = typename index_type::value_type;
-    using slab_type = Slab<mapped_type, index_type, version_type, size_type>;
+    using slab_traits = SlabTraits<
+        mapped_type,
+        index_type,
+        version_type,
+        size_type,
+        AllowAliveBit>;
+    using slab_type = Slab<slab_traits>;
     using slot_type = typename slab_type::slot_type;
     using storage_type = std::unique_ptr<slab_type>;
 
@@ -217,7 +223,7 @@ protected:
  *
  * Uses vector<unique_ptr<Slab>> to support growing index spaces.
  */
-template <typename KeyT>
+template <typename KeyT, bool AllowAliveBit>
 struct multi_slab_storage_policy
 {
     using mapped_type = typename KeyT::tag_type;
@@ -226,7 +232,13 @@ struct multi_slab_storage_policy
     using size_type = typename KeyT::size_type;
     using naked_size_type = typename size_type::value_type;
     using naked_index_type = typename index_type::value_type;
-    using slab_type = Slab<mapped_type, index_type, version_type, size_type>;
+    using slab_traits = SlabTraits<
+        mapped_type,
+        index_type,
+        version_type,
+        size_type,
+        AllowAliveBit>;
+    using slab_type = Slab<slab_traits>;
     using slot_type = typename slab_type::slot_type;
     using storage_type = std::vector<std::unique_ptr<slab_type>>;
 
@@ -453,11 +465,11 @@ protected:
 /**
  * Select the appropriate storage policy based on SlotsPerSlab configuration.
  */
-template <typename KeyT, SlotsPerSlab sps>
+template <typename KeyT, SlotsPerSlab sps, UseAliveBitForLookup alive_bit>
 using storage_policy_t = std::conditional_t<
     use_single_slab_storage_v<KeyT, sps>,
-    single_slab_storage_policy<KeyT>,
-    multi_slab_storage_policy<KeyT>>;
+    single_slab_storage_policy<KeyT, bool(alive_bit)>,
+    multi_slab_storage_policy<KeyT, bool(alive_bit)>>;
 
 
 template <typename TraitsT>
@@ -473,7 +485,7 @@ struct traits<TraitsT>
 template <typename T>
 requires KeyC<T>
 struct traits<T>
-: traits<Traits<T, SlotsPerSlab::Dynamic>>
+: traits<Traits<T, SlotsPerSlab::Dynamic, UseAliveBitForLookup::Yes>>
 { };
 
 template <typename T>

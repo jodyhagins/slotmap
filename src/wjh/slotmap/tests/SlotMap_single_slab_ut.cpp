@@ -24,16 +24,19 @@ namespace {
 using wjh::slotmap::Key;
 using wjh::slotmap::SlotsPerSlab;
 using wjh::slotmap::Traits;
+using wjh::slotmap::UseAliveBitForLookup;
 using wjh::slotmap::test::validate_statistics;
 
 // Single-slab SlotMap with 8-bit index (256 slots max) - 32 bits total
 using SmallKey = Key<int, 8, 8>;
-using SmallTraits = Traits<SmallKey, SlotsPerSlab::All>;
+using SmallTraits =
+    Traits<SmallKey, SlotsPerSlab::All, UseAliveBitForLookup::Yes>;
 using SmallSlotMap = wjh::slotmap::SlotMap<SmallTraits>;
 
 // Single-slab SlotMap with 16-bit index (64K slots max) - explicitly use All
 using MediumKey = Key<int, 16, 16>;
-using MediumTraits = Traits<MediumKey, SlotsPerSlab::All>;
+using MediumTraits =
+    Traits<MediumKey, SlotsPerSlab::All, UseAliveBitForLookup::Yes>;
 using MediumSlotMap = wjh::slotmap::SlotMap<MediumTraits>;
 
 // Multi-slab SlotMap (default) for comparison
@@ -51,7 +54,10 @@ static_assert(
     MediumTraits::is_single_slab,
     "16-bit index with SlotsPerSlab::All should use single-slab storage");
 static_assert(
-    not wjh::slotmap::Traits<DefaultKey, SlotsPerSlab::Dynamic>::is_single_slab,
+    not wjh::slotmap::Traits<
+        DefaultKey,
+        SlotsPerSlab::Dynamic,
+        UseAliveBitForLookup::Yes>::is_single_slab,
     "16-bit index with SlotsPerSlab::Dynamic should use multi-slab storage");
 
 // ============================================================================
@@ -459,7 +465,8 @@ struct LargeValue
 };
 
 using LargeIndexKey = Key<LargeValue, 18, 14>;
-using LargeIndexTraits = Traits<LargeIndexKey, SlotsPerSlab::All>;
+using LargeIndexTraits =
+    Traits<LargeIndexKey, SlotsPerSlab::All, UseAliveBitForLookup::Yes>;
 using LargeIndexSlotMap = wjh::slotmap::SlotMap<LargeIndexTraits>;
 
 static_assert(
@@ -515,7 +522,8 @@ TEST_CASE("Single-slab SlotMap: can fill entire large index space")
     // but we want to verify the full capacity works
 
     using MediumLargeKey = Key<LargeValue, 16, 16>;
-    using MediumLargeTraits = Traits<MediumLargeKey, SlotsPerSlab::All>;
+    using MediumLargeTraits =
+        Traits<MediumLargeKey, SlotsPerSlab::All, UseAliveBitForLookup::Yes>;
     using MediumLargeSlotMap = wjh::slotmap::SlotMap<MediumLargeTraits>;
 
     static_assert(MediumLargeTraits::is_single_slab);

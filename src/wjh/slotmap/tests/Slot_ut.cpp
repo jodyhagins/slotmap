@@ -44,8 +44,9 @@ struct dtl
     };
 
     template <typename T, typename IndexT, typename VersionT, int adj = 1>
-    using Slot =
-        wjh::slotmap::detail::Slot<T, Type<IndexT, adj>, Type<VersionT, adj>>;
+    using Slot = wjh::slotmap::detail::Slot<
+        wjh::slotmap::detail::
+            SlotTraits<T, Type<IndexT, adj>, Type<VersionT, adj>, true>>;
 };
 
 template <typename T, typename IndexT, typename VersionT>

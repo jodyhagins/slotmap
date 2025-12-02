@@ -18,36 +18,49 @@
 
 namespace wjh::slotmap::detail {
 
-/**
- * Check if a version type has spare bits that can be used for an alive bit.
- *
- * @tparam VersionT A type with static members num_bits and value_type.
- * @return true if num_bits < std::numeric_limits<value_type>::digits
- */
-template <typename VersionT>
+template <
+    typename ValueT,
+    typename IndexT,
+    typename VersionT,
+    bool AllowAliveBit>
+struct SlotTraits
+{
+    using value_type = ValueT;
+    using index_type = IndexT;
+    using version_type = VersionT;
+    static constexpr bool allow_alive_bit = AllowAliveBit;
+};
+
+template <typename T>
 constexpr bool
 has_alive_bit()
 {
+    using VersionT = typename T::version_type;
     constexpr auto version_digits =
         std::numeric_limits<typename VersionT::value_type>::digits;
-    return VersionT::num_bits < version_digits;
+    bool const has_room = VersionT::num_bits < version_digits;
+#if defined(WJH_SLOTMAP_DEBUG_MODE)
+    return has_room;
+#else
+    return has_room && T::allow_alive_bit;
+#endif
 }
 
 /**
  * A slot in the slot map, containing either a value (when alive) or
  * a free-list link (when free).
  *
- * @tparam T The value type stored in the slot
- * @tparam IndexT The index type for free-list linking
- * @tparam VersionT The version type for ABA protection
+ * @tparam TraitsT  The set of traits used to instantiate this Slot.
  */
-template <typename T, typename IndexT, typename VersionT>
+template <typename TraitsT>
 class Slot
 {
 public:
-    using value_type = T;
-    using index_type = IndexT;
-    using version_type = VersionT;
+    using value_type = typename TraitsT::value_type;
+    using index_type = typename TraitsT::index_type;
+    using version_type = typename TraitsT::version_type;
+    using naked_version_type = typename version_type::value_type;
+    using traits = TraitsT;
 
     /**
      * Default constructor is trivial, and DOES NOTHING.
@@ -101,7 +114,7 @@ public:
      * @post Slot is in ALIVE state
      */
     template <typename... Args>
-    constexpr T & emplace(Args &&... args);
+    constexpr value_type & emplace(Args &&... args);
 
     /**
      * Destroy the stored value
@@ -109,7 +122,8 @@ public:
      * @pre Slot must be in ALIVE state
      * @post Slot is in FREE state (next field may contain garbage)
      */
-    constexpr void destroy() noexcept(std::is_nothrow_destructible_v<T>);
+    constexpr void destroy() noexcept(
+        std::is_nothrow_destructible_v<value_type>);
 
     /**
      * Access the stored value
@@ -117,10 +131,10 @@ public:
      * @pre Slot must be in ALIVE state
      */
     [[nodiscard]]
-    constexpr T & value() noexcept;
+    constexpr value_type & value() noexcept;
 
     [[nodiscard]]
-    constexpr T const & value() const noexcept;
+    constexpr value_type const & value() const noexcept;
 
     // ========================================================================
     // Alive bit support
@@ -133,7 +147,7 @@ public:
      * accessing the slab's bitmap, improving cache locality.
      */
     static constexpr bool has_embedded_alive_bit =
-        detail::has_alive_bit<version_type>();
+        detail::has_alive_bit<TraitsT>();
 
     /**
      * Check if the slot is alive (has a constructed value).
@@ -145,10 +159,46 @@ public:
     [[nodiscard]]
     constexpr bool is_alive() const noexcept;
 
+    /**
+     * Get the raw version storage including alive bit (if embedded).
+     *
+     * This returns the raw version_bytes_ as an integer, which includes
+     * the alive bit in the MSB when has_embedded_alive_bit is true.
+     *
+     * Used for combined version+alive check optimization in lookup paths.
+     *
+     * @note Only meaningful when has_embedded_alive_bit is true
+     */
+    [[nodiscard]]
+    constexpr naked_version_type version_with_alive_bit() const noexcept;
+
+    /**
+     * Compute expected version value with alive bit set.
+     *
+     * Takes a version and ORs in the alive bit, producing a value that
+     * can be compared directly against version_with_alive_bit() to check
+     * both version match and alive status in a single comparison.
+     *
+     * @param v The version to combine with alive bit
+     * @return Version with alive bit set (as raw integer type)
+     *
+     * @note Only valid when has_embedded_alive_bit is true (static_assert)
+     */
+    [[nodiscard]]
+    static constexpr naked_version_type make_alive_version(
+        version_type v) noexcept
+    {
+        static_assert(
+            has_embedded_alive_bit,
+            "make_alive_version only valid when alive bit is embedded");
+        return v.value | alive_bit;
+    }
+
 private:
-    // Storage for either index_type or T
-    alignas(std::max(alignof(index_type), alignof(T)))
-        std::array<std::byte, std::max(sizeof(index_type), sizeof(T))> storage_;
+    // Storage for either index_type or value_type
+    alignas(std::max(alignof(index_type), alignof(value_type))) std::array<
+        std::byte,
+        std::max(sizeof(index_type), sizeof(value_type))> storage_;
 
     // Version stored as byte array to avoid padding issues between
     // the union and the version field
@@ -163,7 +213,6 @@ private:
     constexpr bool is_free() const;
     constexpr void set_alive();
 
-    using naked_version_type = typename version_type::value_type;
     static constexpr auto version_digits =
         std::numeric_limits<naked_version_type>::digits;
     static constexpr naked_version_type alive_bit = naked_version_type(1)

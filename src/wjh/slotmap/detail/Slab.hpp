@@ -17,6 +17,27 @@
 
 namespace wjh::slotmap::detail {
 
+template <
+    typename ValueT,
+    typename IndexT,
+    typename VersionT,
+    typename SizeT,
+    bool AllowAliveBit>
+struct SlabTraits
+{
+    using value_type = ValueT;
+    using index_type = IndexT;
+    using version_type = VersionT;
+    using size_type = SizeT;
+
+    using slab_traits = SlabTraits;
+    using slot_traits =
+        SlotTraits<value_type, size_type, version_type, AllowAliveBit>;
+    using slot_type = Slot<slot_traits>;
+
+    static constexpr bool alliw_alive_bit = AllowAliveBit;
+};
+
 /**
  * A slab containing a fixed-size array of slots plus metadata.
  *
@@ -25,21 +46,20 @@ namespace wjh::slotmap::detail {
  *   - Array of Slot objects
  *   - Alive bitmap (ceil(slots_per_slab / 8) bytes)
  *
- * @tparam T The value type stored in slots
- * @tparam IndexT Strong type for indices (e.g., Key::Index)
- * @tparam VersionT Strong type for versions (e.g., Key::Version)
- * @tparam SizeT The size type for counts
+ * @tparam TraitsT  An instance of SlabTraits
  */
-template <typename T, typename IndexT, typename VersionT, typename SizeT>
-class alignas(std::max(alignof(SizeT), alignof(Slot<T, SizeT, VersionT>))) Slab
+template <typename TraitsT>
+class alignas(std::max(
+    alignof(typename TraitsT::size_type),
+    alignof(typename TraitsT::slot_type))) Slab
 {
 public:
-    using value_type = T;
-    using index_type = IndexT;
-    using version_type = VersionT;
-    using size_type = SizeT;
-    // Use size_type for Slot's next-link type so it can hold end_of_free_list
-    using slot_type = Slot<T, size_type, VersionT>;
+    using value_type = typename TraitsT::value_type;
+    using index_type = typename TraitsT::index_type;
+    using version_type = typename TraitsT::version_type;
+    using size_type = typename TraitsT::size_type;
+    using slot_traits = typename TraitsT::slot_traits;
+    using slot_type = typename TraitsT::slot_type;
 
     static constexpr auto max_version = version_type(version_type::mask);
 
@@ -70,13 +90,13 @@ public:
      *
      * @return Unique pointer to the cloned slab
      * @throws std::bad_alloc if allocation fails
-     * @throws Any exception from T's copy constructor
+     * @throws Any exception from value_type's copy constructor
      *
-     * @note Only available if T is copy constructible
+     * @note Only available if value_type is copy constructible
      */
     [[nodiscard]]
     std::unique_ptr<Slab> clone() const
-    requires std::is_copy_constructible_v<T>;
+    requires std::is_copy_constructible_v<value_type>;
 
     // Non-copyable, non-movable
     Slab(Slab const &) = delete;
@@ -103,7 +123,7 @@ public:
      * Emplace a value into a slot.
      *
      * @param index Slot index within this slab
-     * @param args Arguments to forward to T's constructor
+     * @param args Arguments to forward to value_type's constructor
      * @return The version for this insertion (to be used in the key)
      *
      * @pre Slot must not be alive (is_alive(index) == false)
