@@ -18,56 +18,26 @@
 // Key bit totals must be 16, 32, 64, or 128. We use 32-bit keys for
 // smaller sizes and use index bits appropriate to the collection size:
 //
-//   - Key<T, 8, 24>   for 100 elements   (256 max slots)
+//   - Key<T, 7, 25>   for 100 elements   (128 max slots)
 //   - Key<T, 10, 22>  for 1000 elements  (1024 max slots)
 //   - Key<T, 13, 19>  for 4096 elements  (8192 max slots)
-//   - Key<T, 16, 16>  for 32K elements   (64K max slots)
-//   - Key<T, 20, 12>  for 262K/1M        (1M max slots)
+//   - Key<T, 15, 17>  for 32K elements   (32K max slots)
+//   - Key<T, 18, 14>  for 262K elements  (262K max slots)
+//   - Key<T, 20, 12>  for 1M elements    (1M max slots)
+//
+// All benchmarks test 4 configuration combinations:
+//   - All_Alive:    SlotsPerSlab::All + UseAliveBitForLookup::Yes
+//   - All_NoAlive:  SlotsPerSlab::All + UseAliveBitForLookup::No
+//   - Dyn_Alive:    SlotsPerSlab::Dynamic + UseAliveBitForLookup::Yes
+//   - Dyn_NoAlive:  SlotsPerSlab::Dynamic + UseAliveBitForLookup::No
 //
 // ----------------------------------------------------------------------
 
-#include <wjh/slotmap/SlotMap.hpp>
-
-#include "benchmarking/benchmark.hpp"
-
-#include <unordered_map>
-#include <vector>
+#include "benchmark_common.hpp"
 
 namespace {
 
-// ============================================================================
-// Value Type
-// ============================================================================
-
-struct Value
-{
-    std::uint64_t id;
-    std::uint64_t data;
-};
-
-// ============================================================================
-// Sized Key Types - Index bits sized to collection (all sum to 32 bits)
-// ============================================================================
-
-// For ~100 elements: 8 index bits = 256 max slots
-using Key100 = wjh::slotmap::Key<Value, 7, 25>;
-using SlotMap100 = wjh::SlotMap<Key100>;
-
-// For ~1000 elements: 10 index bits = 1024 max slots
-using Key1K = wjh::slotmap::Key<Value, 10, 22>;
-using SlotMap1K = wjh::SlotMap<Key1K>;
-
-// For ~4096 elements: 13 index bits = 8192 max slots
-using Key4K = wjh::slotmap::Key<Value, 13, 19>;
-using SlotMap4K = wjh::SlotMap<Key4K>;
-
-// For ~32K elements: 16 index bits = 65536 max slots
-using Key32K = wjh::slotmap::Key<Value, 15, 17>;
-using SlotMap32K = wjh::SlotMap<Key32K>;
-
-// For ~262K and 1M elements: 20 index bits = 1048576 max slots
-using Key1M = wjh::slotmap::Key<Value, 20, 12>;
-using SlotMap1M = wjh::SlotMap<Key1M>;
+using namespace bench;
 
 // ============================================================================
 // Helper: Populate and iterate
@@ -79,12 +49,12 @@ run_iteration_benchmark(benchmark::State & state, std::size_t n)
 {
     SlotMapT sm;
     for (std::size_t i = 0; i < n; ++i) {
-        (void)sm.emplace(Value{i, i * 2});
+        (void)sm.emplace(SmallValue{i, i * 2});
     }
 
     std::uint64_t sum = 0;
     for (auto _ : state) {
-        sm.for_each([&](Value const & v) { sum += v.data; });
+        sm.for_each([&](SmallValue const & v) { sum += v.data; });
     }
 
     benchmark::DoNotOptimize(sum);
@@ -95,82 +65,29 @@ run_iteration_benchmark(benchmark::State & state, std::size_t n)
 // SlotMap Iteration - Sized Keys (appropriately sized for collection)
 // ============================================================================
 
-void
-BM_SlotMap_Iterate_Sized_100(benchmark::State & state)
-{
-    run_iteration_benchmark<SlotMap100>(state, 100);
-}
-
-BENCHMARK(BM_SlotMap_Iterate_Sized_100);
-
-void
-BM_SlotMap_Iterate_Sized_1K(benchmark::State & state)
-{
-    run_iteration_benchmark<SlotMap1K>(state, 1000);
-}
-
-BENCHMARK(BM_SlotMap_Iterate_Sized_1K);
-
-void
-BM_SlotMap_Iterate_Sized_4K(benchmark::State & state)
-{
-    run_iteration_benchmark<SlotMap4K>(state, 4096);
-}
-
-BENCHMARK(BM_SlotMap_Iterate_Sized_4K);
-
-void
-BM_SlotMap_Iterate_Sized_32K(benchmark::State & state)
-{
-    run_iteration_benchmark<SlotMap32K>(state, 32768);
-}
-
-BENCHMARK(BM_SlotMap_Iterate_Sized_32K);
-
-void
-BM_SlotMap_Iterate_Sized_262K(benchmark::State & state)
-{
-    run_iteration_benchmark<SlotMap1M>(state, 262144);
-}
-
-BENCHMARK(BM_SlotMap_Iterate_Sized_262K);
-
-void
-BM_SlotMap_Iterate_Sized_1M(benchmark::State & state)
-{
-    run_iteration_benchmark<SlotMap1M>(state, 1048576);
-}
-
-BENCHMARK(BM_SlotMap_Iterate_Sized_1M);
+// Register Sized iteration benchmarks for all sizes and configs
+// clang-format off
+BENCH_SLOTMAP_ALL_CONFIGS(Iterate_Sized, run_iteration_benchmark, SmallKey100, 100, 100);
+BENCH_SLOTMAP_ALL_CONFIGS(Iterate_Sized, run_iteration_benchmark, SmallKey1K, 1K, 1000);
+BENCH_SLOTMAP_ALL_CONFIGS(Iterate_Sized, run_iteration_benchmark, SmallKey4K, 4K, 4096);
+BENCH_SLOTMAP_ALL_CONFIGS(Iterate_Sized, run_iteration_benchmark, SmallKey32K, 32K, 32768);
+BENCH_SLOTMAP_ALL_CONFIGS(Iterate_Sized, run_iteration_benchmark, SmallKey262K, 262K, 262144);
+BENCH_SLOTMAP_ALL_CONFIGS(Iterate_Sized, run_iteration_benchmark, SmallKey1M, 1M, 1048576);
+// clang-format on
 
 // ============================================================================
 // SlotMap Iteration - Oversized Keys (original benchmark style)
 // Uses 20-bit index even for small collections - wasteful iteration
+// This demonstrates the cost of over-provisioning index bits
 // ============================================================================
 
-void
-BM_SlotMap_Iterate_Oversized_100(benchmark::State & state)
-{
-    run_iteration_benchmark<SlotMap1M>(state, 100);
-}
+// Register Oversized iteration benchmarks for all configs
+// clang-format off
+BENCH_SLOTMAP_ALL_CONFIGS(Iterate_Oversized, run_iteration_benchmark, SmallKey1M, 100, 100);
+BENCH_SLOTMAP_ALL_CONFIGS(Iterate_Oversized, run_iteration_benchmark, SmallKey1M, 1K, 1000);
+BENCH_SLOTMAP_ALL_CONFIGS(Iterate_Oversized, run_iteration_benchmark, SmallKey1M, 4K, 4096);
 
-BENCHMARK(BM_SlotMap_Iterate_Oversized_100);
-
-void
-BM_SlotMap_Iterate_Oversized_1K(benchmark::State & state)
-{
-    run_iteration_benchmark<SlotMap1M>(state, 1000);
-}
-
-BENCHMARK(BM_SlotMap_Iterate_Oversized_1K);
-
-void
-BM_SlotMap_Iterate_Oversized_4K(benchmark::State & state)
-{
-    run_iteration_benchmark<SlotMap1M>(state, 4096);
-}
-
-BENCHMARK(BM_SlotMap_Iterate_Oversized_4K);
+// clang-format on
 
 // ============================================================================
 // unordered_map Iteration (baseline)
@@ -179,10 +96,10 @@ BENCHMARK(BM_SlotMap_Iterate_Oversized_4K);
 void
 run_unordered_map_iteration(benchmark::State & state, std::size_t n)
 {
-    std::unordered_map<std::uint64_t, Value> um;
+    std::unordered_map<std::uint64_t, SmallValue> um;
     um.reserve(n);
     for (std::size_t i = 0; i < n; ++i) {
-        um.emplace(i, Value{i, i * 2});
+        um.emplace(i, SmallValue{i, i * 2});
     }
 
     std::uint64_t sum = 0;

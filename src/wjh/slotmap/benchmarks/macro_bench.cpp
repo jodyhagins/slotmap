@@ -13,7 +13,13 @@
 // - Long-running session fragmentation
 // - Mixed workloads (YCSB-inspired)
 //
-// All benchmarks use appropriately-sized keys for fair comparison.
+// All benchmarks test 4 configuration combinations:
+//   - All_Alive:    SlotsPerSlab::All + UseAliveBitForLookup::Yes
+//   - All_NoAlive:  SlotsPerSlab::All + UseAliveBitForLookup::No
+//   - Dyn_Alive:    SlotsPerSlab::Dynamic + UseAliveBitForLookup::Yes
+//   - Dyn_NoAlive:  SlotsPerSlab::Dynamic + UseAliveBitForLookup::No
+//
+// 32/32 keys only use Dynamic (All would require 4B+ slot allocation).
 //
 // ----------------------------------------------------------------------
 
@@ -100,55 +106,16 @@ run_game_lifecycle(benchmark::State & state, std::size_t n)
     set_items_processed(state, static_cast<std::int64_t>(total_ops));
 }
 
-// Sized SlotMap game lifecycle benchmarks
-void
-BM_SlotMap_GameLifecycle_100(benchmark::State & state)
-{
-    run_game_lifecycle<SmallSlotMap100>(state, 100);
-}
+// Register GameLifecycle benchmarks for all sizes and configs
+// clang-format off
+BENCH_SLOTMAP_ALL_CONFIGS(GameLifecycle, run_game_lifecycle, SmallKey100, 100, 100);
+BENCH_SLOTMAP_ALL_CONFIGS(GameLifecycle, run_game_lifecycle, SmallKey1K, 1K, 1000);
+BENCH_SLOTMAP_ALL_CONFIGS(GameLifecycle, run_game_lifecycle, SmallKey4K, 4K, 4096);
+BENCH_SLOTMAP_ALL_CONFIGS(GameLifecycle, run_game_lifecycle, SmallKey32K, 32K, 32768);
+BENCH_SLOTMAP_32_32(GameLifecycle, run_game_lifecycle, 1K, 1000);
+BENCH_SLOTMAP_32_32(GameLifecycle, run_game_lifecycle, 32K, 32768);
 
-BENCHMARK(BM_SlotMap_GameLifecycle_100);
-
-void
-BM_SlotMap_GameLifecycle_1K(benchmark::State & state)
-{
-    run_game_lifecycle<SmallSlotMap1K>(state, 1000);
-}
-
-BENCHMARK(BM_SlotMap_GameLifecycle_1K);
-
-void
-BM_SlotMap_GameLifecycle_4K(benchmark::State & state)
-{
-    run_game_lifecycle<SmallSlotMap4K>(state, 4096);
-}
-
-BENCHMARK(BM_SlotMap_GameLifecycle_4K);
-
-void
-BM_SlotMap_GameLifecycle_32K(benchmark::State & state)
-{
-    run_game_lifecycle<SmallSlotMap32K>(state, 32768);
-}
-
-BENCHMARK(BM_SlotMap_GameLifecycle_32K);
-
-// 32/32 comparison
-void
-BM_SlotMap_GameLifecycle_32_32_1K(benchmark::State & state)
-{
-    run_game_lifecycle<SmallSlotMap32_32>(state, 1000);
-}
-
-BENCHMARK(BM_SlotMap_GameLifecycle_32_32_1K);
-
-void
-BM_SlotMap_GameLifecycle_32_32_32K(benchmark::State & state)
-{
-    run_game_lifecycle<SmallSlotMap32_32>(state, 32768);
-}
-
-BENCHMARK(BM_SlotMap_GameLifecycle_32_32_32K);
+// clang-format on
 
 /// Game entity lifecycle simulation for unordered_map
 void
@@ -295,63 +262,17 @@ run_slotmap_static_lookup(benchmark::State & state, std::size_t n)
         state.iterations() * static_cast<std::int64_t>(lookups));
 }
 
-// Sized SlotMap static lookup benchmarks
-void
-BM_SlotMap_StaticLookup_100(benchmark::State & state)
-{
-    run_slotmap_static_lookup<SmallSlotMap100>(state, 100);
-}
+// Register StaticLookup benchmarks for all sizes and configs
+// clang-format off
+BENCH_SLOTMAP_ALL_CONFIGS(StaticLookup, run_slotmap_static_lookup, SmallKey100, 100, 100);
+BENCH_SLOTMAP_ALL_CONFIGS(StaticLookup, run_slotmap_static_lookup, SmallKey1K, 1K, 1000);
+BENCH_SLOTMAP_ALL_CONFIGS(StaticLookup, run_slotmap_static_lookup, SmallKey4K, 4K, 4096);
+BENCH_SLOTMAP_ALL_CONFIGS(StaticLookup, run_slotmap_static_lookup, SmallKey32K, 32K, 32768);
+BENCH_SLOTMAP_ALL_CONFIGS(StaticLookup, run_slotmap_static_lookup, SmallKey262K, 262K, 262144);
+BENCH_SLOTMAP_32_32(StaticLookup, run_slotmap_static_lookup, 1K, 1000);
+BENCH_SLOTMAP_32_32(StaticLookup, run_slotmap_static_lookup, 32K, 32768);
 
-BENCHMARK(BM_SlotMap_StaticLookup_100);
-
-void
-BM_SlotMap_StaticLookup_1K(benchmark::State & state)
-{
-    run_slotmap_static_lookup<SmallSlotMap1K>(state, 1000);
-}
-
-BENCHMARK(BM_SlotMap_StaticLookup_1K);
-
-void
-BM_SlotMap_StaticLookup_4K(benchmark::State & state)
-{
-    run_slotmap_static_lookup<SmallSlotMap4K>(state, 4096);
-}
-
-BENCHMARK(BM_SlotMap_StaticLookup_4K);
-
-void
-BM_SlotMap_StaticLookup_32K(benchmark::State & state)
-{
-    run_slotmap_static_lookup<SmallSlotMap32K>(state, 32768);
-}
-
-BENCHMARK(BM_SlotMap_StaticLookup_32K);
-
-void
-BM_SlotMap_StaticLookup_262K(benchmark::State & state)
-{
-    run_slotmap_static_lookup<SmallSlotMap262K>(state, 262144);
-}
-
-BENCHMARK(BM_SlotMap_StaticLookup_262K);
-
-// 32/32 comparison
-void
-BM_SlotMap_StaticLookup_32_32_1K(benchmark::State & state)
-{
-    run_slotmap_static_lookup<SmallSlotMap32_32>(state, 1000);
-}
-
-BENCHMARK(BM_SlotMap_StaticLookup_32_32_1K);
-
-void
-BM_SlotMap_StaticLookup_32_32_32K(benchmark::State & state)
-{
-    run_slotmap_static_lookup<SmallSlotMap32_32>(state, 32768);
-}
-
-BENCHMARK(BM_SlotMap_StaticLookup_32_32_32K);
+// clang-format on
 
 /// Static lookup table for unordered_map
 void
@@ -486,47 +407,15 @@ run_slotmap_fragmentation(benchmark::State & state, std::size_t n)
         state.iterations() * static_cast<std::int64_t>(ops));
 }
 
-// Sized SlotMap fragmentation benchmarks
-void
-BM_SlotMap_Fragmentation_100(benchmark::State & state)
-{
-    run_slotmap_fragmentation<SmallSlotMap100>(state, 100);
-}
+// Register Fragmentation benchmarks for all sizes and configs
+// clang-format off
+BENCH_SLOTMAP_ALL_CONFIGS(Fragmentation, run_slotmap_fragmentation, SmallKey100, 100, 100);
+BENCH_SLOTMAP_ALL_CONFIGS(Fragmentation, run_slotmap_fragmentation, SmallKey1K, 1K, 1000);
+BENCH_SLOTMAP_ALL_CONFIGS(Fragmentation, run_slotmap_fragmentation, SmallKey4K, 4K, 4096);
+BENCH_SLOTMAP_ALL_CONFIGS(Fragmentation, run_slotmap_fragmentation, SmallKey32K, 32K, 32768);
+BENCH_SLOTMAP_32_32(Fragmentation, run_slotmap_fragmentation, 1K, 1000);
 
-BENCHMARK(BM_SlotMap_Fragmentation_100);
-
-void
-BM_SlotMap_Fragmentation_1K(benchmark::State & state)
-{
-    run_slotmap_fragmentation<SmallSlotMap1K>(state, 1000);
-}
-
-BENCHMARK(BM_SlotMap_Fragmentation_1K);
-
-void
-BM_SlotMap_Fragmentation_4K(benchmark::State & state)
-{
-    run_slotmap_fragmentation<SmallSlotMap4K>(state, 4096);
-}
-
-BENCHMARK(BM_SlotMap_Fragmentation_4K);
-
-void
-BM_SlotMap_Fragmentation_32K(benchmark::State & state)
-{
-    run_slotmap_fragmentation<SmallSlotMap32K>(state, 32768);
-}
-
-BENCHMARK(BM_SlotMap_Fragmentation_32K);
-
-// 32/32 comparison
-void
-BM_SlotMap_Fragmentation_32_32_1K(benchmark::State & state)
-{
-    run_slotmap_fragmentation<SmallSlotMap32_32>(state, 1000);
-}
-
-BENCHMARK(BM_SlotMap_Fragmentation_32_32_1K);
+// clang-format on
 
 /// Fragmentation stress test for unordered_map
 void
@@ -652,47 +541,15 @@ run_slotmap_ycsb_a(benchmark::State & state, std::size_t n)
         state.iterations() * static_cast<std::int64_t>(ops));
 }
 
-// Sized SlotMap YCSB-A benchmarks
-void
-BM_SlotMap_YCSB_A_100(benchmark::State & state)
-{
-    run_slotmap_ycsb_a<SmallSlotMap100>(state, 100);
-}
+// Register YCSB-A benchmarks for all sizes and configs
+// clang-format off
+BENCH_SLOTMAP_ALL_CONFIGS(YCSB_A, run_slotmap_ycsb_a, SmallKey100, 100, 100);
+BENCH_SLOTMAP_ALL_CONFIGS(YCSB_A, run_slotmap_ycsb_a, SmallKey1K, 1K, 1000);
+BENCH_SLOTMAP_ALL_CONFIGS(YCSB_A, run_slotmap_ycsb_a, SmallKey4K, 4K, 4096);
+BENCH_SLOTMAP_ALL_CONFIGS(YCSB_A, run_slotmap_ycsb_a, SmallKey32K, 32K, 32768);
+BENCH_SLOTMAP_32_32(YCSB_A, run_slotmap_ycsb_a, 1K, 1000);
 
-BENCHMARK(BM_SlotMap_YCSB_A_100);
-
-void
-BM_SlotMap_YCSB_A_1K(benchmark::State & state)
-{
-    run_slotmap_ycsb_a<SmallSlotMap1K>(state, 1000);
-}
-
-BENCHMARK(BM_SlotMap_YCSB_A_1K);
-
-void
-BM_SlotMap_YCSB_A_4K(benchmark::State & state)
-{
-    run_slotmap_ycsb_a<SmallSlotMap4K>(state, 4096);
-}
-
-BENCHMARK(BM_SlotMap_YCSB_A_4K);
-
-void
-BM_SlotMap_YCSB_A_32K(benchmark::State & state)
-{
-    run_slotmap_ycsb_a<SmallSlotMap32K>(state, 32768);
-}
-
-BENCHMARK(BM_SlotMap_YCSB_A_32K);
-
-// 32/32 comparison
-void
-BM_SlotMap_YCSB_A_32_32_1K(benchmark::State & state)
-{
-    run_slotmap_ycsb_a<SmallSlotMap32_32>(state, 1000);
-}
-
-BENCHMARK(BM_SlotMap_YCSB_A_32_32_1K);
+// clang-format on
 
 /// YCSB Workload A: 50% reads, 50% updates (unordered_map)
 void
@@ -796,47 +653,15 @@ run_slotmap_ycsb_b(benchmark::State & state, std::size_t n)
         state.iterations() * static_cast<std::int64_t>(ops));
 }
 
-// Sized SlotMap YCSB-B benchmarks
-void
-BM_SlotMap_YCSB_B_100(benchmark::State & state)
-{
-    run_slotmap_ycsb_b<SmallSlotMap100>(state, 100);
-}
+// Register YCSB-B benchmarks for all sizes and configs
+// clang-format off
+BENCH_SLOTMAP_ALL_CONFIGS(YCSB_B, run_slotmap_ycsb_b, SmallKey100, 100, 100);
+BENCH_SLOTMAP_ALL_CONFIGS(YCSB_B, run_slotmap_ycsb_b, SmallKey1K, 1K, 1000);
+BENCH_SLOTMAP_ALL_CONFIGS(YCSB_B, run_slotmap_ycsb_b, SmallKey4K, 4K, 4096);
+BENCH_SLOTMAP_ALL_CONFIGS(YCSB_B, run_slotmap_ycsb_b, SmallKey32K, 32K, 32768);
+BENCH_SLOTMAP_32_32(YCSB_B, run_slotmap_ycsb_b, 1K, 1000);
 
-BENCHMARK(BM_SlotMap_YCSB_B_100);
-
-void
-BM_SlotMap_YCSB_B_1K(benchmark::State & state)
-{
-    run_slotmap_ycsb_b<SmallSlotMap1K>(state, 1000);
-}
-
-BENCHMARK(BM_SlotMap_YCSB_B_1K);
-
-void
-BM_SlotMap_YCSB_B_4K(benchmark::State & state)
-{
-    run_slotmap_ycsb_b<SmallSlotMap4K>(state, 4096);
-}
-
-BENCHMARK(BM_SlotMap_YCSB_B_4K);
-
-void
-BM_SlotMap_YCSB_B_32K(benchmark::State & state)
-{
-    run_slotmap_ycsb_b<SmallSlotMap32K>(state, 32768);
-}
-
-BENCHMARK(BM_SlotMap_YCSB_B_32K);
-
-// 32/32 comparison
-void
-BM_SlotMap_YCSB_B_32_32_1K(benchmark::State & state)
-{
-    run_slotmap_ycsb_b<SmallSlotMap32_32>(state, 1000);
-}
-
-BENCHMARK(BM_SlotMap_YCSB_B_32_32_1K);
+// clang-format on
 
 /// YCSB Workload B: 95% reads, 5% updates (unordered_map)
 void
@@ -957,47 +782,15 @@ run_slotmap_interleaved(benchmark::State & state, std::size_t n)
         state.iterations() * static_cast<std::int64_t>(ops));
 }
 
-// Sized SlotMap interleaved benchmarks
-void
-BM_SlotMap_Interleaved_100(benchmark::State & state)
-{
-    run_slotmap_interleaved<SmallSlotMap100>(state, 100);
-}
+// Register Interleaved benchmarks for all sizes and configs
+// clang-format off
+BENCH_SLOTMAP_ALL_CONFIGS(Interleaved, run_slotmap_interleaved, SmallKey100, 100, 100);
+BENCH_SLOTMAP_ALL_CONFIGS(Interleaved, run_slotmap_interleaved, SmallKey1K, 1K, 1000);
+BENCH_SLOTMAP_ALL_CONFIGS(Interleaved, run_slotmap_interleaved, SmallKey4K, 4K, 4096);
+BENCH_SLOTMAP_ALL_CONFIGS(Interleaved, run_slotmap_interleaved, SmallKey32K, 32K, 32768);
+BENCH_SLOTMAP_32_32(Interleaved, run_slotmap_interleaved, 1K, 1000);
 
-BENCHMARK(BM_SlotMap_Interleaved_100);
-
-void
-BM_SlotMap_Interleaved_1K(benchmark::State & state)
-{
-    run_slotmap_interleaved<SmallSlotMap1K>(state, 1000);
-}
-
-BENCHMARK(BM_SlotMap_Interleaved_1K);
-
-void
-BM_SlotMap_Interleaved_4K(benchmark::State & state)
-{
-    run_slotmap_interleaved<SmallSlotMap4K>(state, 4096);
-}
-
-BENCHMARK(BM_SlotMap_Interleaved_4K);
-
-void
-BM_SlotMap_Interleaved_32K(benchmark::State & state)
-{
-    run_slotmap_interleaved<SmallSlotMap32K>(state, 32768);
-}
-
-BENCHMARK(BM_SlotMap_Interleaved_32K);
-
-// 32/32 comparison
-void
-BM_SlotMap_Interleaved_32_32_1K(benchmark::State & state)
-{
-    run_slotmap_interleaved<SmallSlotMap32_32>(state, 1000);
-}
-
-BENCHMARK(BM_SlotMap_Interleaved_32_32_1K);
+// clang-format on
 
 /// Interleaved insert/erase for unordered_map
 void
@@ -1109,37 +902,14 @@ run_slotmap_bulk_insert_reserve(benchmark::State & state, std::size_t n)
         state.iterations() * static_cast<std::int64_t>(n));
 }
 
-void
-BM_SlotMap_BulkInsertReserve_1K(benchmark::State & state)
-{
-    run_slotmap_bulk_insert_reserve<SmallSlotMap1K>(state, 1000);
-}
+// Register BulkInsertReserve benchmarks for all sizes and configs
+// clang-format off
+BENCH_SLOTMAP_ALL_CONFIGS(BulkInsertReserve, run_slotmap_bulk_insert_reserve, SmallKey1K, 1K, 1000);
+BENCH_SLOTMAP_ALL_CONFIGS(BulkInsertReserve, run_slotmap_bulk_insert_reserve, SmallKey4K, 4K, 4096);
+BENCH_SLOTMAP_ALL_CONFIGS(BulkInsertReserve, run_slotmap_bulk_insert_reserve, SmallKey32K, 32K, 32768);
+BENCH_SLOTMAP_ALL_CONFIGS(BulkInsertReserve, run_slotmap_bulk_insert_reserve, SmallKey262K, 262K, 262144);
 
-BENCHMARK(BM_SlotMap_BulkInsertReserve_1K);
-
-void
-BM_SlotMap_BulkInsertReserve_4K(benchmark::State & state)
-{
-    run_slotmap_bulk_insert_reserve<SmallSlotMap4K>(state, 4096);
-}
-
-BENCHMARK(BM_SlotMap_BulkInsertReserve_4K);
-
-void
-BM_SlotMap_BulkInsertReserve_32K(benchmark::State & state)
-{
-    run_slotmap_bulk_insert_reserve<SmallSlotMap32K>(state, 32768);
-}
-
-BENCHMARK(BM_SlotMap_BulkInsertReserve_32K);
-
-void
-BM_SlotMap_BulkInsertReserve_262K(benchmark::State & state)
-{
-    run_slotmap_bulk_insert_reserve<SmallSlotMap262K>(state, 262144);
-}
-
-BENCHMARK(BM_SlotMap_BulkInsertReserve_262K);
+// clang-format on
 
 /// Bulk insert without reserve (SlotMap)
 template <typename SlotMapT>
@@ -1161,36 +931,12 @@ run_slotmap_bulk_insert_no_reserve(benchmark::State & state, std::size_t n)
         state.iterations() * static_cast<std::int64_t>(n));
 }
 
-void
-BM_SlotMap_BulkInsertNoReserve_1K(benchmark::State & state)
-{
-    run_slotmap_bulk_insert_no_reserve<SmallSlotMap1K>(state, 1000);
-}
-
-BENCHMARK(BM_SlotMap_BulkInsertNoReserve_1K);
-
-void
-BM_SlotMap_BulkInsertNoReserve_4K(benchmark::State & state)
-{
-    run_slotmap_bulk_insert_no_reserve<SmallSlotMap4K>(state, 4096);
-}
-
-BENCHMARK(BM_SlotMap_BulkInsertNoReserve_4K);
-
-void
-BM_SlotMap_BulkInsertNoReserve_32K(benchmark::State & state)
-{
-    run_slotmap_bulk_insert_no_reserve<SmallSlotMap32K>(state, 32768);
-}
-
-BENCHMARK(BM_SlotMap_BulkInsertNoReserve_32K);
-
-void
-BM_SlotMap_BulkInsertNoReserve_262K(benchmark::State & state)
-{
-    run_slotmap_bulk_insert_no_reserve<SmallSlotMap262K>(state, 262144);
-}
-
-BENCHMARK(BM_SlotMap_BulkInsertNoReserve_262K);
+// Register BulkInsertNoReserve benchmarks for all sizes and configs
+// clang-format off
+BENCH_SLOTMAP_ALL_CONFIGS(BulkInsertNoReserve, run_slotmap_bulk_insert_no_reserve, SmallKey1K, 1K, 1000);
+BENCH_SLOTMAP_ALL_CONFIGS(BulkInsertNoReserve, run_slotmap_bulk_insert_no_reserve, SmallKey4K, 4K, 4096);
+BENCH_SLOTMAP_ALL_CONFIGS(BulkInsertNoReserve, run_slotmap_bulk_insert_no_reserve, SmallKey32K, 32K, 32768);
+BENCH_SLOTMAP_ALL_CONFIGS(BulkInsertNoReserve, run_slotmap_bulk_insert_no_reserve, SmallKey262K, 262K, 262144);
+// clang-format on
 
 } // anonymous namespace

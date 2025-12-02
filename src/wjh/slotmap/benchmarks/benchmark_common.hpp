@@ -77,16 +77,43 @@ using LargeKey1M = wjh::slotmap::Key<LargeValue, 20, 12>;
 using SmallKey32_32 = wjh::slotmap::Key<SmallValue, 32, 32>;
 using LargeKey32_32 = wjh::slotmap::Key<LargeValue, 32, 32>;
 
+// ============================================================================
+// Configuration Aliases
+// ============================================================================
+
+// Shorthand aliases for configuration enums
+using SPS = wjh::slotmap::SlotsPerSlab;
+using UAB = wjh::slotmap::UseAliveBitForLookup;
+
+// Generic configurable SlotMap template
+template <typename KeyT, SPS sps, UAB alive>
+using ConfiguredSlotMap = wjh::SlotMap<wjh::slotmap::Traits<KeyT, sps, alive>>;
+
+// ============================================================================
+// 4 Configuration-Specific SlotMap Templates
+// ============================================================================
+
+// All slots in single slab, alive bit enabled (fastest lookups)
 template <typename KeyT>
-using DynSlotMap = wjh::SlotMap<wjh::slotmap::Traits<
-    KeyT,
-    wjh::slotmap::SlotsPerSlab::Dynamic,
-    wjh::slotmap::UseAliveBitForLookup::Yes>>;
+using SlotMap_All_Alive = ConfiguredSlotMap<KeyT, SPS::All, UAB::Yes>;
+
+// All slots in single slab, alive bit disabled
 template <typename KeyT>
-using AllSlotMap = wjh::SlotMap<wjh::slotmap::Traits<
-    KeyT,
-    wjh::slotmap::SlotsPerSlab::All,
-    wjh::slotmap::UseAliveBitForLookup::Yes>>;
+using SlotMap_All_NoAlive = ConfiguredSlotMap<KeyT, SPS::All, UAB::No>;
+
+// Dynamic multi-slab (4096 slots/slab), alive bit enabled
+template <typename KeyT>
+using SlotMap_Dyn_Alive = ConfiguredSlotMap<KeyT, SPS::Dynamic, UAB::Yes>;
+
+// Dynamic multi-slab (4096 slots/slab), alive bit disabled
+template <typename KeyT>
+using SlotMap_Dyn_NoAlive = ConfiguredSlotMap<KeyT, SPS::Dynamic, UAB::No>;
+
+// Legacy aliases for backward compatibility
+template <typename KeyT>
+using DynSlotMap = SlotMap_Dyn_Alive<KeyT>;
+template <typename KeyT>
+using AllSlotMap = SlotMap_All_Alive<KeyT>;
 
 // SlotMap type aliases
 // For small index spaces (32-bit keys with <= ~64K slots), use
@@ -225,6 +252,109 @@ set_bytes_processed(benchmark::State & state, std::int64_t bytes)
 {
     state.SetBytesProcessed(bytes);
 }
+
+// ============================================================================
+// Benchmark Registration Macros
+//
+// These macros generate benchmark functions for all 4 configuration
+// combinations. Use them to avoid repeating benchmark logic 4x.
+//
+// Usage:
+//   // First, define a templated run function:
+//   template <typename SlotMapT>
+//   void run_insert(benchmark::State& state, std::size_t n) { ... }
+//
+//   // Then register for all configs at each size:
+//   BENCH_SLOTMAP_ALL_CONFIGS(Insert, run_insert, SmallKey100, 100, 100)
+//   BENCH_SLOTMAP_ALL_CONFIGS(Insert, run_insert, SmallKey1K, 1K, 1000)
+//
+//   // For 32/32 keys (Dynamic only - can't use SlotsPerSlab::All):
+//   BENCH_SLOTMAP_32_32(Insert, run_insert, 1M, 1048576)
+// ============================================================================
+
+// Register benchmark for all 4 configs at a given size
+// Args: OpName, RunFunc, KeyType, SizeName, SizeVal
+#define BENCH_SLOTMAP_ALL_CONFIGS(OpName, RunFunc, KeyType, SizeName, SizeVal) \
+    void BM_SlotMap_##OpName##_##SizeName##_All_Alive( \
+        benchmark::State & state) \
+    { \
+        RunFunc<SlotMap_All_Alive<KeyType>>(state, SizeVal); \
+    } \
+    BENCHMARK(BM_SlotMap_##OpName##_##SizeName##_All_Alive); \
+\
+    void BM_SlotMap_##OpName##_##SizeName##_All_NoAlive( \
+        benchmark::State & state) \
+    { \
+        RunFunc<SlotMap_All_NoAlive<KeyType>>(state, SizeVal); \
+    } \
+    BENCHMARK(BM_SlotMap_##OpName##_##SizeName##_All_NoAlive); \
+\
+    void BM_SlotMap_##OpName##_##SizeName##_Dyn_Alive( \
+        benchmark::State & state) \
+    { \
+        RunFunc<SlotMap_Dyn_Alive<KeyType>>(state, SizeVal); \
+    } \
+    BENCHMARK(BM_SlotMap_##OpName##_##SizeName##_Dyn_Alive); \
+\
+    void BM_SlotMap_##OpName##_##SizeName##_Dyn_NoAlive( \
+        benchmark::State & state) \
+    { \
+        RunFunc<SlotMap_Dyn_NoAlive<KeyType>>(state, SizeVal); \
+    } \
+    BENCHMARK(BM_SlotMap_##OpName##_##SizeName##_Dyn_NoAlive)
+
+// Register benchmark for 32/32 keys (Dynamic only - All not supported)
+// Args: OpName, RunFunc, SizeName, SizeVal
+#define BENCH_SLOTMAP_32_32(OpName, RunFunc, SizeName, SizeVal) \
+    void BM_SlotMap_##OpName##_##SizeName##_32_32_Alive( \
+        benchmark::State & state) \
+    { \
+        RunFunc<SlotMap_Dyn_Alive<SmallKey32_32>>(state, SizeVal); \
+    } \
+    BENCHMARK(BM_SlotMap_##OpName##_##SizeName##_32_32_Alive); \
+\
+    void BM_SlotMap_##OpName##_##SizeName##_32_32_NoAlive( \
+        benchmark::State & state) \
+    { \
+        RunFunc<SlotMap_Dyn_NoAlive<SmallKey32_32>>(state, SizeVal); \
+    } \
+    BENCHMARK(BM_SlotMap_##OpName##_##SizeName##_32_32_NoAlive)
+
+// Register benchmark for LargeValue with all 4 configs
+// Args: OpName, RunFunc, KeyType, SizeName, SizeVal
+#define BENCH_SLOTMAP_LARGE_ALL_CONFIGS( \
+    OpName, \
+    RunFunc, \
+    KeyType, \
+    SizeName, \
+    SizeVal) \
+    void BM_SlotMap_##OpName##_Large_##SizeName##_All_Alive( \
+        benchmark::State & state) \
+    { \
+        RunFunc<SlotMap_All_Alive<KeyType>>(state, SizeVal); \
+    } \
+    BENCHMARK(BM_SlotMap_##OpName##_Large_##SizeName##_All_Alive); \
+\
+    void BM_SlotMap_##OpName##_Large_##SizeName##_All_NoAlive( \
+        benchmark::State & state) \
+    { \
+        RunFunc<SlotMap_All_NoAlive<KeyType>>(state, SizeVal); \
+    } \
+    BENCHMARK(BM_SlotMap_##OpName##_Large_##SizeName##_All_NoAlive); \
+\
+    void BM_SlotMap_##OpName##_Large_##SizeName##_Dyn_Alive( \
+        benchmark::State & state) \
+    { \
+        RunFunc<SlotMap_Dyn_Alive<KeyType>>(state, SizeVal); \
+    } \
+    BENCHMARK(BM_SlotMap_##OpName##_Large_##SizeName##_Dyn_Alive); \
+\
+    void BM_SlotMap_##OpName##_Large_##SizeName##_Dyn_NoAlive( \
+        benchmark::State & state) \
+    { \
+        RunFunc<SlotMap_Dyn_NoAlive<KeyType>>(state, SizeVal); \
+    } \
+    BENCHMARK(BM_SlotMap_##OpName##_Large_##SizeName##_Dyn_NoAlive)
 
 } // namespace bench
 
