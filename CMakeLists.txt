@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.27)
 
 project(wjh_slotmap
-        VERSION 1.0
+        VERSION 1.0.0
         DESCRIPTION "A slot map data structure library."
         LANGUAGES CXX)
 
@@ -25,6 +25,28 @@ include(FetchContent)
 include(CTest)
 include(CompileOptions)
 include(ThirdParty)
+
+# Configuration files for find_package() support
+# Only generate when building as top-level project
+if (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+    configure_file(
+            "${CMAKE_CURRENT_SOURCE_DIR}/cmake/wjh_slotmapVersion.cmake.in"
+            "${CMAKE_CURRENT_BINARY_DIR}/cmake/wjh_slotmapVersion.cmake"
+            @ONLY
+    )
+    configure_file(
+            "${CMAKE_CURRENT_SOURCE_DIR}/cmake/wjh_slotmapConfig.cmake.in"
+            "${CMAKE_CURRENT_BINARY_DIR}/cmake/wjh_slotmapConfig.cmake"
+            COPYONLY
+    )
+
+    include(GNUInstallDirs)
+    install(FILES
+            "${CMAKE_CURRENT_BINARY_DIR}/cmake/wjh_slotmapVersion.cmake"
+            "${CMAKE_CURRENT_BINARY_DIR}/cmake/wjh_slotmapConfig.cmake"
+            DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/wjh_slotmap"
+    )
+endif()
 
 add_subdirectory(src)
 if (WJH_SLOTMAP_BUILD_TESTS)

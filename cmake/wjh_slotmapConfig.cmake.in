@@ -1,0 +1,19 @@
+## ----------------------------------------------------------------------
+## Copyright 2025 Jody Hagins
+## Distributed under the MIT Software License
+## See accompanying file LICENSE or copy at
+## https://opensource.org/licenses/MIT
+## ----------------------------------------------------------------------
+
+## CMake package config file for find_package() support
+
+include("${CMAKE_CURRENT_LIST_DIR}/wjh_slotmapTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/wjh_slotmapVersion.cmake")
+
+if(wjh_slotmap_FIND_VERSION)
+    if(NOT wjh_slotmap_VERSION VERSION_EQUAL wjh_slotmap_FIND_VERSION)
+        if(wjh_slotmap_FIND_REQUIRED)
+            message(FATAL_ERROR "wjh_slotmap version ${wjh_slotmap_VERSION} does not match required ${wjh_slotmap_FIND_VERSION}")
+        endif()
+    endif()
+endif()

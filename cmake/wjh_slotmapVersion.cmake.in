@@ -1,0 +1,17 @@
+## ----------------------------------------------------------------------
+## Copyright 2025 Jody Hagins
+## Distributed under the MIT Software License
+## See accompanying file LICENSE or copy at
+## https://opensource.org/licenses/MIT
+## ----------------------------------------------------------------------
+
+## Version information for wjh_slotmap package
+
+set(wjh_slotmap_VERSION @wjh_slotmap_VERSION@)
+set(wjh_slotmap_VERSION_MAJOR @wjh_slotmap_VERSION_MAJOR@)
+set(wjh_slotmap_VERSION_MINOR @wjh_slotmap_VERSION_MINOR@)
+set(wjh_slotmap_VERSION_PATCH @wjh_slotmap_VERSION_PATCH@)
+
+if(NOT wjh_slotmap_FIND_QUIETLY)
+    message(STATUS "Found wjh_slotmap v${wjh_slotmap_VERSION}")
+endif()

@@ -24,7 +24,7 @@ SlotMap storage (slabs of slots):
 ## Quick Example
 
 ```cpp
-#include <wjh/slotmap/SlotMap.hpp>
+#include <wjh/slotmap.hpp>
 
 struct Player {
     std::string name;
@@ -150,19 +150,52 @@ But, if you need to store pointers or references, then why are you using a slotm
 
 ## Installation
 
-```bash
-# Header-only - just copy or add as subdirectory
-git clone https://github.com/jodyhagins/slotmap.git
-# Include path: -I/path/to/slot_map/src
+This is a header-only library requiring C++20. Choose your preferred integration method:
 
-# Or with CMake FetchContent
+### Method 1: CMake FetchContent (Recommended)
+
+```cmake
 include(FetchContent)
 FetchContent_Declare(wjh_slotmap
     GIT_REPOSITORY https://github.com/jodyhagins/slotmap.git
-    GIT_TAG main
+    GIT_TAG main  # or specific version tag
 )
 FetchContent_MakeAvailable(wjh_slotmap)
 target_link_libraries(your_target PRIVATE wjh::slotmap)
+```
+
+### Method 2: System Installation
+
+```bash
+# Install to system (default: /usr/local)
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --install build
+
+# Or install to custom prefix
+cmake --install build --prefix /opt/local
+```
+
+Then in your CMakeLists.txt:
+
+```cmake
+find_package(wjh_slotmap 1.0 REQUIRED)
+target_link_libraries(your_target PRIVATE wjh::slotmap)
+```
+
+### Method 3: Direct Include
+
+```bash
+git clone https://github.com/jodyhagins/slotmap.git
+# Add to compiler flags: -I/path/to/slot_map/src -std=c++20
+```
+
+In your code:
+
+```cpp
+#include <wjh/slotmap.hpp>  // Includes all public headers
+// Or include specific headers:
+#include <wjh/slotmap/SlotMap.hpp>
+#include <wjh/slotmap/Key.hpp>
 ```
 
 ## Requirements
