@@ -161,14 +161,16 @@ struct Statistics
  * For consideration, the size of each slot can be imagined as the size of
  * `union { size_type; mapped_type; }` plus `sizeof(version_type)`.
  *
- * @note  The maximum number of slots possible will be used if it is less than
- * SlotsPerSlab, which means all slots will be in a single slab.
+ * @note  When SlotsPerSlab >= 2^IndexBits (the maximum possible slots), the
+ * implementation can make optimization trade offs, knowing that there will ever
+ * only be at most one slot. SlotsPerSlab::All explicitly requests this
+ * optimization.
  */
 enum class SlotsPerSlab : std::size_t
 {
     /**
      * The user provides the slots per slab to the SlotMap constructor. The
-     * default constructor uses SlotsPerSlab::Default.
+     * default constructor uses SlotsPerSlab::Default for the number of slabs.
      */
     Dynamic = 0,
 
@@ -195,34 +197,35 @@ enum class SlotsPerSlab : std::size_t
     All = std::size_t(-1),
 };
 
-template <KeyC KeyT, SlotsPerSlab sps>
+template <KeyC, SlotsPerSlab>
+struct Traits;
+
+} // namespace wjh::slotmap
+
+#include "detail/SlotMap.hpp"
+
+namespace wjh::slotmap {
+
+/**
+ * Traits for SlotMap configuration.
+ *
+ * @tparam KeyT The key type (must satisfy KeyC concept)
+ * @tparam nslots The slots per slab configuration
+ */
+template <KeyC KeyT, SlotsPerSlab nslots>
 struct Traits
+: detail::storage_policy_t<KeyT, nslots>
 {
+protected:
+    using storage_policy = detail::storage_policy_t<KeyT, nslots>;
+    using storage_policy::storage_policy;
+
+public:
     using key_type = KeyT;
+    using naked_size_type = typename storage_policy::naked_size_type;
 
-    static constexpr SlotsPerSlab slots_per_slab = sps;
+    static constexpr SlotsPerSlab slots_per_slab = nslots;
 };
-
-namespace detail {
-template <typename TraitsT>
-struct traits;
-
-template <typename TraitsT>
-requires KeyC<typename TraitsT::key_type>
-struct traits<TraitsT>
-{
-    using type = TraitsT;
-};
-
-template <typename T>
-requires KeyC<T>
-struct traits<T>
-: traits<Traits<T, SlotsPerSlab::Dynamic>>
-{ };
-
-template <typename T>
-using traits_t = typename traits<T>::type;
-} // namespace detail
 
 /**
  * A high-performance slot map container with O(1) insertion, deletion,
@@ -275,17 +278,25 @@ public:
      *
      * @throws std::bad_alloc if initial slab allocation fails
      */
-    SlotMap();
+    SlotMap()
+    requires traits_type::is_single_slab;
+
+    SlotMap()
+    requires(not traits_type::is_single_slab);
 
     /**
      * Construct with explicit slab size.
+     *
+     * Only available for multi-slab configurations where the slab size
+     * can be customized. Single-slab configurations always use all slots.
      *
      * @param slots_per_slab Number of slots per slab (must be power of 2)
      * @throws std::invalid_argument if slots_per_slab is not a power of 2
      *         or exceeds the maximum index value
      * @throws std::bad_alloc if initial slab allocation fails
      */
-    explicit SlotMap(size_type slots_per_slab);
+    explicit SlotMap(size_type slots_per_slab)
+    requires(not traits_type::is_single_slab);
 
     /**
      * Copy constructor.
@@ -516,29 +527,22 @@ public:
 private:
     using naked_size_type = typename size_type::value_type;
     using naked_index_type = typename index_type::value_type;
-    using slab_type =
-        detail::Slab<mapped_type, index_type, version_type, size_type>;
+    using slab_type = typename traits_type::slab_type;
     using slot_type = typename slab_type::slot_type;
 
-    std::vector<std::unique_ptr<slab_type>> slabs_{};
+    static constexpr bool is_single_slab = traits_type::is_single_slab;
+
     size_type free_list_head_ = end_of_free_list;
     naked_size_type size_ = 0;
     naked_size_type dead_slots_ = 0;
     std::size_t objects_created_ = 0;
     naked_size_type slots_per_slab_;
-    unsigned log2_slots_per_slab_ = 0;
     naked_size_type next_slab_base_index_ = 0;
 
     static constexpr size_type compute_default_slab_size() noexcept;
     static void validate_slab_size(size_type slots_per_slab);
-    slot_type & get_slot(index_type idx) noexcept;
-    slot_type const & get_slot(index_type idx) const noexcept;
-    slab_type * get_slab(index_type idx) noexcept;
-    slab_type const * get_slab(index_type idx) const noexcept;
-    void clear_slabs() noexcept;
     bool allocate_new_slab();
     void initialize_slab_free_list(slab_type * slab, index_type base);
-    void try_recycle_slab(std::size_t slab_idx);
     static size_type for_each(auto & self, auto & func);
     static bool use(auto & self, key_type key, auto & func);
 };

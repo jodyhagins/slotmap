@@ -12,42 +12,40 @@ namespace wjh::slotmap {
 template <typename TraitsT>
 SlotMap<TraitsT>::
 SlotMap()
+requires traits_type::is_single_slab
+: slots_per_slab_{end_of_free_list}
+{ }
+
+template <typename TraitsT>
+SlotMap<TraitsT>::
+SlotMap()
+requires(not traits_type::is_single_slab)
 : SlotMap(compute_default_slab_size())
 { }
 
 template <typename TraitsT>
 SlotMap<TraitsT>::
 SlotMap(size_type slots_per_slab)
-: slots_per_slab_{slots_per_slab}
+requires(not traits_type::is_single_slab)
+: traits_type(slots_per_slab)
+, slots_per_slab_{slots_per_slab}
 {
     validate_slab_size(slots_per_slab);
-    log2_slots_per_slab_ = static_cast<unsigned>(
-        std::countr_zero(slots_per_slab_));
 }
 
 template <typename TraitsT>
 SlotMap<TraitsT>::
 SlotMap(SlotMap const & other)
 requires std::is_copy_constructible_v<mapped_type>
-: free_list_head_{other.free_list_head_}
+: traits_type{static_cast<traits_type const &>(other)}
+, free_list_head_{other.free_list_head_}
 , size_{other.size_}
 , dead_slots_{other.dead_slots_}
 , objects_created_{other.objects_created_}
 , slots_per_slab_{other.slots_per_slab_}
-, log2_slots_per_slab_{other.log2_slots_per_slab_}
 , next_slab_base_index_{other.next_slab_base_index_}
 {
-    // Reserve space for all slabs
-    slabs_.reserve(other.slabs_.size());
-
-    // Clone each non-null slab
-    for (auto const & slab_ptr : other.slabs_) {
-        if (slab_ptr) {
-            slabs_.push_back(slab_ptr->clone());
-        } else {
-            slabs_.push_back(nullptr);
-        }
-    }
+    this->storage_clone_from(static_cast<traits_type const &>(other));
 }
 
 template <typename TraitsT>
@@ -67,13 +65,12 @@ requires std::is_copy_constructible_v<mapped_type>
 template <typename TraitsT>
 SlotMap<TraitsT>::
 SlotMap(SlotMap && other) noexcept
-: slabs_{std::move(other.slabs_)}
+: traits_type{std::move(other)}
 , free_list_head_{other.free_list_head_}
 , size_{other.size_}
 , dead_slots_{other.dead_slots_}
 , objects_created_{other.objects_created_}
 , slots_per_slab_{other.slots_per_slab_}
-, log2_slots_per_slab_{other.log2_slots_per_slab_}
 , next_slab_base_index_{other.next_slab_base_index_}
 {
     other.free_list_head_ = end_of_free_list;
@@ -89,16 +86,13 @@ SlotMap<TraitsT>::
 operator = (SlotMap && other) noexcept
 {
     if (this != &other) {
-        // Clear current slabs (destructors handle alive slot cleanup)
-        clear_slabs();
+        traits_type::operator = (std::move(other));
 
-        slabs_ = std::move(other.slabs_);
         free_list_head_ = other.free_list_head_;
         size_ = other.size_;
         dead_slots_ = other.dead_slots_;
         objects_created_ = other.objects_created_;
         slots_per_slab_ = other.slots_per_slab_;
-        log2_slots_per_slab_ = other.log2_slots_per_slab_;
         next_slab_base_index_ = other.next_slab_base_index_;
 
         other.free_list_head_ = end_of_free_list;
@@ -175,59 +169,6 @@ validate_slab_size(size_type slots_per_slab)
 }
 
 template <typename TraitsT>
-SlotMap<TraitsT>::slot_type &
-SlotMap<TraitsT>::
-get_slot(index_type idx) noexcept
-{
-    return const_cast<slot_type &>(
-        const_cast<SlotMap const &>(*this).get_slot(idx));
-}
-
-template <typename TraitsT>
-SlotMap<TraitsT>::slot_type const &
-SlotMap<TraitsT>::
-get_slot(index_type idx) const noexcept
-{
-    auto const slab_idx = static_cast<std::size_t>(idx >> log2_slots_per_slab_);
-    auto const slot_idx = static_cast<size_type>(idx & (slots_per_slab_ - 1));
-    return slabs_[slab_idx]->slot(slot_idx);
-}
-
-template <typename TraitsT>
-void
-SlotMap<TraitsT>::
-clear_slabs() noexcept
-{
-    slabs_.clear();
-    free_list_head_ = end_of_free_list;
-    size_ = 0;
-    dead_slots_ = 0;
-    objects_created_ = 0;
-    next_slab_base_index_ = 0;
-}
-
-template <typename TraitsT>
-SlotMap<TraitsT>::slab_type *
-SlotMap<TraitsT>::
-get_slab(index_type idx) noexcept
-{
-    return const_cast<slab_type *>(
-        const_cast<SlotMap const &>(*this).get_slab(idx));
-}
-
-template <typename TraitsT>
-SlotMap<TraitsT>::slab_type const *
-SlotMap<TraitsT>::
-get_slab(index_type idx) const noexcept
-{
-    auto const slab_idx = static_cast<std::size_t>(idx >> log2_slots_per_slab_);
-    if (slab_idx >= slabs_.size()) {
-        return nullptr;
-    }
-    return slabs_[slab_idx].get();
-}
-
-template <typename TraitsT>
 bool
 SlotMap<TraitsT>::
 allocate_new_slab()
@@ -237,12 +178,14 @@ allocate_new_slab()
         return false;
     }
 
-    auto const new_slab_idx = static_cast<std::size_t>(
-        next_slab_base_index_ >> log2_slots_per_slab_);
+    // Calculate the slab index for multi-slab storage
+    auto const new_slab_idx = this->storage_slab_index(
+        index_type(static_cast<naked_index_type>(next_slab_base_index_)));
 
-    // Ensure vector is large enough
-    if (new_slab_idx >= slabs_.size()) {
-        slabs_.resize(new_slab_idx + 1);
+    // Get storage slot for the new slab (may resize vector for multi-slab)
+    auto * storage_slot = this->storage_allocate_slot(new_slab_idx);
+    if (not storage_slot) {
+        return false; // Already allocated (single slab) or allocation failed
     }
 
     // Create the slab
@@ -253,14 +196,14 @@ allocate_new_slab()
         slab.get(),
         index_type(static_cast<naked_index_type>(next_slab_base_index_)));
 
-    // Special case: first slab, slot 0 gets version 1 to avoid null key
+    // First slab, slot 0 gets version 1 to avoid null key
     if (new_slab_idx == 0) {
         using naked_version_type = typename version_type::value_type;
         slab->slot(index_type(naked_index_type{0}))
             .set_version(version_type{naked_version_type{1}});
     }
 
-    slabs_[new_slab_idx] = std::move(slab);
+    *storage_slot = std::move(slab);
     next_slab_base_index_ += slots_per_slab_;
 
     return true;
@@ -304,10 +247,10 @@ try_emplace(Args &&... args)
 
     // Pop from free list - convert size_type to index_type via value
     auto const idx = index_type(naked_index_type(free_list_head_.value));
-    auto * slab = get_slab(idx);
+    auto * slab = this->storage_get_slab(idx);
     assert(slab);
-    auto const slot_idx = index_type(
-        naked_index_type(idx.value & (slots_per_slab_ - 1)));
+
+    auto const slot_idx = this->storage_slot_index(idx);
 
     // Emplace the value - this returns the version and sets alive bit
     // Strong exception guarantee: if this throws, we haven't modified state
@@ -342,11 +285,10 @@ SlotMap<TraitsT>::
 erase(key_type key)
 {
     auto const key_idx = key.index();
-    if (auto * slab = get_slab(key_idx)) {
-        auto const slab_idx = static_cast<std::size_t>(
-            key_idx >> log2_slots_per_slab_);
-        auto const slot_idx = index_type(
-            naked_index_type(key_idx.value & (slots_per_slab_ - 1)));
+    if (auto * slab = this->storage_get_slab(key_idx)) {
+        auto const slab_idx = this->storage_slab_index(key_idx);
+        auto const slot_idx = this->storage_slot_index(key_idx);
+
         if (auto & slot = slab->slot(slot_idx);
             slot.version() == key.version() && slab->is_alive(slot_idx))
         {
@@ -361,7 +303,34 @@ erase(key_type key)
                 // Slot is dead - increment counter and check if slab can be
                 // recycled
                 ++dead_slots_;
-                try_recycle_slab(slab_idx);
+                this->storage_try_recycle_slab(
+                    slab_idx,
+                    [this](slab_type *)
+                        -> std::optional<
+                            std::tuple<std::size_t, index_type, size_type>> {
+                        // Check if there's room for more slabs in the index
+                        // space
+                        auto const new_base = next_slab_base_index_;
+                        if (size_type(new_base) + size_type(slots_per_slab_) >
+                            end_of_free_list)
+                        {
+                            return std::nullopt;
+                        }
+
+                        auto const first_index = index_type(
+                            static_cast<naked_index_type>(new_base));
+                        auto const new_idx = this->storage_slab_index(
+                            first_index);
+
+                        // Update next_slab_base_index_ and free_list_head_
+                        next_slab_base_index_ += slots_per_slab_;
+                        free_list_head_ = size_type(new_base);
+
+                        return std::tuple{
+                            new_idx,
+                            first_index,
+                            free_list_head_};
+                    });
             }
 
             return true;
@@ -377,11 +346,10 @@ pop(key_type key)
 requires std::is_move_constructible_v<mapped_type>
 {
     auto const key_idx = key.index();
-    if (auto * slab = get_slab(key_idx)) {
-        auto const slab_idx = static_cast<std::size_t>(
-            key_idx >> log2_slots_per_slab_);
-        auto const slot_idx = index_type(
-            naked_index_type(key_idx.value & (slots_per_slab_ - 1)));
+    if (auto * slab = this->storage_get_slab(key_idx)) {
+        auto const slab_idx = this->storage_slab_index(key_idx);
+        auto const slot_idx = this->storage_slot_index(key_idx);
+
         if (auto & slot = slab->slot(slot_idx);
             slot.version() == key.version() && slab->is_alive(slot_idx))
         {
@@ -397,9 +365,33 @@ requires std::is_move_constructible_v<mapped_type>
                 free_list_head_ = size_type(key_idx);
             } else {
                 // Slot is dead - increment counter and check if slab can be
-                // recycled
+                // recycled (no-op for single slab)
                 ++dead_slots_;
-                try_recycle_slab(slab_idx);
+                this->storage_try_recycle_slab(
+                    slab_idx,
+                    [this](slab_type *)
+                        -> std::optional<
+                            std::tuple<std::size_t, index_type, size_type>> {
+                        auto const new_base = next_slab_base_index_;
+                        if (size_type(new_base) + size_type(slots_per_slab_) >
+                            end_of_free_list)
+                        {
+                            return std::nullopt;
+                        }
+
+                        auto const first_index = index_type(
+                            static_cast<naked_index_type>(new_base));
+                        auto const new_idx = this->storage_slab_index(
+                            first_index);
+
+                        next_slab_base_index_ += slots_per_slab_;
+                        free_list_head_ = size_type(new_base);
+
+                        return std::tuple{
+                            new_idx,
+                            first_index,
+                            free_list_head_};
+                    });
             }
 
             return result;
@@ -471,9 +463,9 @@ use(auto & self, key_type key, auto & func)
     using KeyT = key_type;
     using FuncT = decltype(func);
     auto const key_idx = key.index();
-    if (auto * slab = self.get_slab(key_idx)) {
-        auto const slot_idx = index_type(
-            naked_index_type(key_idx.value & (self.slots_per_slab_ - 1)));
+    if (auto * slab = self.storage_get_slab(key_idx)) {
+        auto const slot_idx = self.storage_slot_index(key_idx);
+
         if (auto & slot = slab->slot(slot_idx);
             slot.version() == key.version() &&
             check_slot_alive_bit(slot, slab, slot_idx))
@@ -571,18 +563,13 @@ for_each(auto & self, auto & func)
     naked_size_type visited = 0;
     Options options{};
 
-    // Iterate over all slabs
-    for (std::size_t slab_idx = 0;
-         slab_idx < self.slabs_.size() && not options.stop;
-         ++slab_idx)
-    {
-        auto * slab = self.slabs_[slab_idx].get();
-        if (not slab) {
-            continue; // Skip recycled slabs
+    // Use storage_for_each_slab to iterate over slabs
+    self.storage_for_each_slab([&](slab_type * slab, std::size_t slab_idx) {
+        if (options.stop) {
+            return;
         }
 
-        auto const base_idx = static_cast<naked_index_type>(
-            slab_idx << self.log2_slots_per_slab_);
+        auto const base_idx = self.storage_base_index(slab_idx);
 
         // Use bitmap-scanning iteration for efficiency
         slab->for_each_alive([&](index_type slot_idx) -> bool {
@@ -615,7 +602,7 @@ for_each(auto & self, auto & func)
 
             return not options.stop;
         });
-    }
+    });
 
     return size_type(visited);
 }
@@ -626,13 +613,13 @@ SlotMap<TraitsT>::
 swap(SlotMap & other) noexcept
 {
     using std::swap;
-    swap(slabs_, other.slabs_);
+    // Swap the storage policy (handles slabs_ and any policy-specific state)
+    swap(static_cast<traits_type &>(*this), static_cast<traits_type &>(other));
     swap(free_list_head_, other.free_list_head_);
     swap(size_, other.size_);
     swap(dead_slots_, other.dead_slots_);
     swap(objects_created_, other.objects_created_);
     swap(slots_per_slab_, other.slots_per_slab_);
-    swap(log2_slots_per_slab_, other.log2_slots_per_slab_);
     swap(next_slab_base_index_, other.next_slab_base_index_);
 }
 
@@ -644,14 +631,8 @@ clear()
     // Start with empty free list - we'll rebuild it
     free_list_head_ = end_of_free_list;
 
-    for (std::size_t slab_idx = 0; slab_idx < slabs_.size(); ++slab_idx) {
-        auto * slab = slabs_[slab_idx].get();
-        if (not slab) {
-            continue;
-        }
-
-        auto const base_idx = static_cast<naked_size_type>(
-            slab_idx << log2_slots_per_slab_);
+    this->storage_for_each_slab([&](slab_type * slab, std::size_t slab_idx) {
+        auto const base_idx = this->storage_base_index(slab_idx);
 
         // Process all slots: destroy alive values, rebuild free list
         for (naked_size_type slot_idx = 0; slot_idx < slots_per_slab_;
@@ -687,7 +668,7 @@ clear()
                 // Dead slots (version == max) are not added
             }
         }
-    }
+    });
 
     size_ = 0;
 }
@@ -697,7 +678,12 @@ void
 SlotMap<TraitsT>::
 reset()
 {
-    clear_slabs();
+    this->storage_clear();
+    free_list_head_ = end_of_free_list;
+    size_ = 0;
+    dead_slots_ = 0;
+    objects_created_ = 0;
+    next_slab_base_index_ = 0;
 }
 
 template <typename TraitsT>
@@ -714,48 +700,6 @@ reserve(size_type n)
             break;
         }
     }
-}
-
-template <typename TraitsT>
-void
-SlotMap<TraitsT>::
-try_recycle_slab(std::size_t slab_idx)
-{
-    auto * slab = slabs_[slab_idx].get();
-    if (not slab || not slab->can_be_recycled()) {
-        return;
-    }
-
-    // Check if there's room for more slabs in the index space
-    auto const new_base = next_slab_base_index_;
-    if (size_type(new_base) + size_type(slots_per_slab_) > end_of_free_list) {
-        // No room for recycling - just delete the slab
-        slabs_[slab_idx].reset();
-        return;
-    }
-
-    // Calculate where the recycled slab will go
-    auto const new_slab_idx = static_cast<std::size_t>(
-        new_base >> log2_slots_per_slab_);
-
-    // Ensure vector is large enough
-    if (new_slab_idx >= slabs_.size()) {
-        slabs_.resize(new_slab_idx + 1);
-    }
-
-    // Recycle the slab to the new position
-    auto const first_index = index_type(
-        static_cast<naked_index_type>(new_base));
-    slab->recycle(first_index, free_list_head_);
-
-    // Move slab pointer to new position
-    if (new_slab_idx != slab_idx) {
-        slabs_[new_slab_idx] = std::move(slabs_[slab_idx]);
-    }
-
-    // Update bookkeeping
-    free_list_head_ = size_type(new_base);
-    next_slab_base_index_ += slots_per_slab_;
 }
 
 template <typename TraitsT>
@@ -791,21 +735,15 @@ statistics() const noexcept
     stats.objects_created = objects_created_;
     stats.objects_remaining = stats.max_objects - objects_created_;
 
-    // Slab metrics - count non-null slabs
-    stats.slab_vector_size = slabs_.size();
-    stats.slab_count = 0;
-    for (auto const & slab_ptr : slabs_) {
-        if (slab_ptr) {
-            ++stats.slab_count;
-        }
-    }
+    // Slab metrics - use storage policy methods
+    stats.slab_count = this->storage_slab_count();
+    stats.slab_vector_size = this->storage_vector_size();
 
     // Memory metrics
     auto const bytes_per_slab = slab_type::total_bytes_needed(
         size_type(slots_per_slab_));
     stats.slab_memory_bytes = stats.slab_count * bytes_per_slab;
-    stats.vector_memory_bytes = slabs_.capacity() *
-        sizeof(std::unique_ptr<slab_type>);
+    stats.vector_memory_bytes = this->storage_vector_memory_bytes();
     stats.total_memory_bytes = stats.slab_memory_bytes +
         stats.vector_memory_bytes;
 

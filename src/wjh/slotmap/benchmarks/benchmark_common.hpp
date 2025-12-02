@@ -77,22 +77,36 @@ using LargeKey1M = wjh::slotmap::Key<LargeValue, 20, 12>;
 using SmallKey32_32 = wjh::slotmap::Key<SmallValue, 32, 32>;
 using LargeKey32_32 = wjh::slotmap::Key<LargeValue, 32, 32>;
 
-// SlotMap type aliases
-using SmallSlotMap100 = wjh::SlotMap<SmallKey100>;
-using SmallSlotMap1K = wjh::SlotMap<SmallKey1K>;
-using SmallSlotMap4K = wjh::SlotMap<SmallKey4K>;
-using SmallSlotMap32K = wjh::SlotMap<SmallKey32K>;
-using SmallSlotMap262K = wjh::SlotMap<SmallKey262K>;
-using SmallSlotMap1M = wjh::SlotMap<SmallKey1M>;
-using SmallSlotMap32_32 = wjh::SlotMap<SmallKey32_32>;
+template <typename KeyT>
+using DynSlotMap = wjh::SlotMap<
+    wjh::slotmap::Traits<KeyT, wjh::slotmap::SlotsPerSlab::Dynamic>>;
+template <typename KeyT>
+using AllSlotMap =
+    wjh::SlotMap<wjh::slotmap::Traits<KeyT, wjh::slotmap::SlotsPerSlab::All>>;
 
-using LargeSlotMap100 = wjh::SlotMap<LargeKey100>;
-using LargeSlotMap1K = wjh::SlotMap<LargeKey1K>;
-using LargeSlotMap4K = wjh::SlotMap<LargeKey4K>;
-using LargeSlotMap32K = wjh::SlotMap<LargeKey32K>;
-using LargeSlotMap262K = wjh::SlotMap<LargeKey262K>;
-using LargeSlotMap1M = wjh::SlotMap<LargeKey1M>;
-using LargeSlotMap32_32 = wjh::SlotMap<LargeKey32_32>;
+// SlotMap type aliases
+// For small index spaces (32-bit keys with <= ~64K slots), use
+// SlotsPerSlab::All for single-slab storage optimization (eliminates vector
+// indirection)
+using SmallSlotMap100 = AllSlotMap<SmallKey100>;
+using SmallSlotMap1K = AllSlotMap<SmallKey1K>;
+using SmallSlotMap4K = AllSlotMap<SmallKey4K>;
+using SmallSlotMap32K = AllSlotMap<SmallKey32K>;
+using SmallSlotMap262K = AllSlotMap<SmallKey262K>;
+using SmallSlotMap1M = AllSlotMap<SmallKey1M>;
+
+// For 64-bit keys (large index space), use default multi-slab storage
+using SmallSlotMap32_32 = DynSlotMap<SmallKey32_32>;
+
+using LargeSlotMap100 = AllSlotMap<LargeKey100>;
+using LargeSlotMap1K = AllSlotMap<LargeKey1K>;
+using LargeSlotMap4K = AllSlotMap<LargeKey4K>;
+using LargeSlotMap32K = AllSlotMap<LargeKey32K>;
+using LargeSlotMap262K = AllSlotMap<LargeKey262K>;
+using LargeSlotMap1M = AllSlotMap<LargeKey1M>;
+
+// For 64-bit keys (large index space), use default multi-slab storage
+using LargeSlotMap32_32 = DynSlotMap<LargeKey32_32>;
 
 // ============================================================================
 // Random Number Generation

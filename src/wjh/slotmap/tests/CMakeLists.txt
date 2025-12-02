@@ -79,3 +79,10 @@ add_slotmap_test(
     SOURCES
         SlotMap_edge_cases_ut.cpp
 )
+
+add_slotmap_test(
+    TARGET slotmap_single_slab_ut
+    PREFIX "SlotMap Single-Slab"
+    SOURCES
+        SlotMap_single_slab_ut.cpp
+)
