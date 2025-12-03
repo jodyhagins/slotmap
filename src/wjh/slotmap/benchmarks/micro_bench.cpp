@@ -148,7 +148,7 @@ run_lookup_random(benchmark::State & state, std::size_t n)
     std::size_t found = 0;
     for (auto _ : state) {
         for (std::size_t idx : access_order) {
-            sm.use(keys[idx], [&](auto const & v) { found += v.data; });
+            (void)sm.use(keys[idx], [&](auto const & v) { found += v.data; });
         }
     }
 

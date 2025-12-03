@@ -1133,37 +1133,62 @@ assert(not map.contains(key));  // True if value was < 0
 
 ```cpp
 template <typename F>
-bool use(key_type key, F && func);
+[[nodiscard]]
+auto use(key_type key, F && func);
 
 template <typename F>
-bool use(key_type key, F && func) const;
+[[nodiscard]]
+auto use(key_type key, F && func) const;
 ```
 
-**Description:** Access an element by key. If the key is valid and refers to an alive element, invokes the callback with the element and returns `true`. Otherwise, returns `false` without calling the callback.
+**Description:** Access an element by key. If the key is valid and refers to an alive element, invokes the callback with the element. The return type depends on the callback's return type:
 
-This is **the** primary way to access elements. It combines lookup and access into a single safe operation.
+- If the callback returns **void**: Returns `bool`
+  - `true` if the key was valid and the callback was invoked
+  - `false` if the key was invalid
+
+- If the callback returns **non-void type `R`**: Returns `std::optional<R>`
+  - `std::optional<R>` containing the callback's return value if the key was valid
+  - `std::nullopt` if the key was invalid
+
+This is **the** primary way to access elements. It combines lookup, access, and value extraction into a single safe operation.
+
+**Note:** The member function has the `[[nodiscard]]` attribute because the cast majority of the time you care if the item was found and the callback called. Thus, if you don't need the result you will need to explicitly `(void)` the return. The examples in this document don't do that, for readability. Yes, that sounds a bit weird, because we want our code to be readable too, but in reality, we want to usage to feel weird and draw attention in these cases.
 
 **Non-const Callable Signatures:**
 
-The non-const `use()` supports multiple callback signatures:
-- `void(key_type, mapped_type &, Options &)` - Full access with key, value, and erase capability
-- `void(key_type, mapped_type &)` - Key and value
-- `void(mapped_type &, Options &)` - Value with erase capability
-- `void(mapped_type &)` - Value only
+The non-const `use()` supports multiple callback signatures. Each can return either void or a value type:
+
+- `R(key_type, mapped_type &, Options &)` - Full access with key, value, and erase capability
+- `R(key_type, mapped_type &)` - Key and value
+- `R(mapped_type &, Options &)` - Value with erase capability
+- `R(mapped_type &)` - Value only
+
+Where `R` can be:
+- `void` - Returns `bool` indicating success
+- Any other type - Returns `std::optional<R>` containing the callback's result
 
 **Const Callable Signatures:**
 
 The const `use()` supports read-only callbacks without Options (since Options only supports erase which can't work on const):
-- `void(key_type, mapped_type const &)` - Key and value (read-only)
-- `void(mapped_type const &)` - Value only (read-only)
+
+- `R(key_type, mapped_type const &)` - Key and value (read-only)
+- `R(mapped_type const &)` - Value only (read-only)
+
+Where `R` follows the same rules as non-const callbacks.
 
 **Parameters:**
 - `key` - The key to look up.
 - `func` - Callable with one of the signatures listed above.
 
 **Returns:**
-- `true` if the key was valid and `func` was called.
-- `false` if the key was invalid, stale, or null.
+- If callback returns **void**: `bool`
+  - `true` if the key was valid and `func` was called
+  - `false` if the key was invalid, stale, or null
+
+- If callback returns **type `R`**: `std::optional<R>`
+  - `std::optional<R>` containing the callback's return value if key was valid
+  - `std::nullopt` if the key was invalid, stale, or null
 
 **When is a key invalid?**
 - The key is null (`key.is_null()`).
@@ -1174,89 +1199,386 @@ The const `use()` supports read-only callbacks without Options (since Options on
 
 When using the non-const `use()` with an `Options &` parameter, the callback can request element erasure by setting `opts.erase = true`. The element will be erased AFTER the callback returns, ensuring the element is accessible within the callback.
 
-**Examples:**
+---
+
+### Basic Examples (Void Callbacks)
 
 ```cpp
 wjh::SlotMap<MyKey> map;
 auto key = map.emplace(42);
 
-// Basic use: value only
-int value = 0;
-if (map.use(key, [&](int const & v) { value = v; })) {
-    std::cout << "Value: " << value << '\n';  // 42
+// Basic use: value only - returns bool
+if (map.use(key, [](int & v) { v *= 2; })) {
+    std::cout << "Value doubled\n";
 } else {
     std::cerr << "Key is invalid\n";
 }
 
-// Use with key parameter
-map.use(key, [](MyKey k, int & v) {
-    std::cout << "Key index: " << k.index().value << ", value: " << v << '\n';
-    v *= 2;
-});
-
-// Use with Options for conditional erase
+// Use with Options for conditional erase - returns bool
 map.use(key, [](int & v, wjh::slotmap::Options & opts) {
     if (v > 100) {
         opts.erase = true;  // Request erasure after callback
     }
 });
 
-// Full signature with all parameters
-map.use(key, [](MyKey k, int & v, wjh::slotmap::Options & opts) {
-    std::cout << "Processing key " << k.index().value << '\n';
-    if (v < 0) {
-        /* map.erase(k); --> UB ; don't do it! */
-        opts.erase = true;  // Erase negative values
-    }
-});
-
-// Const access (read-only)
+// Const access (read-only) - returns bool
 map.use(key, [](int const & v) {
     std::cout << "Value: " << v << '\n';
 });
-
-// Const access with key parameter
-map.use(key, [](MyKey k, int const & v) {
-    std::cout << "Key: " << k.index().value << ", value: " << v << '\n';
-});
-
-// After erase, key becomes invalid
-map.erase(key);
-bool found = map.use(key, [](int & v) { v = 100; });
-assert(not found);  // Key is stale, func not called
 ```
 
-**Pattern: Safe Access Without Exceptions**
+### Value Extraction Examples
 
 ```cpp
-// Instead of:
-// try {
-//     auto & elem = map.at(key);  // Hypothetical - SlotMap doesn't have this
-//     elem.update();
-// } catch (...) { /* handle */ }
+wjh::SlotMap<MyKey> map;
+auto key = map.emplace(42);
 
-// Use:
-if (not map.use(key, [](auto & elem) { elem.update(); })) {
-    // Handle invalid key
+// Extract a value - returns std::optional<int>
+auto value = map.use(key, [](int const & v) -> int {
+    return v * 2;
+});
+
+if (value) {
+    std::cout << "Computed value: " << *value << '\n';  // 84
+} else {
+    std::cerr << "Key is invalid\n";
 }
 ```
 
-**Pattern: Conditional Erase**
+#### Complex Value Extraction
 
 ```cpp
-// Erase elements that meet a condition
-map.use(key, [](Player & p, wjh::slotmap::Options & opts) {
-    if (p.health <= 0) {
-        std::cout << p.name << " has been defeated!\n";
-        opts.erase = true;  // Remove from map
-    }
+struct Player {
+    std::string name;
+    int health;
+    int score;
+};
+
+using PlayerKey = wjh::slotmap::Key<Player, 16_ib, 8_vb>;
+wjh::SlotMap<PlayerKey> players;
+auto key = players.emplace("Alice", 100, 500);
+
+// Extract a field - returns std::optional<int>
+auto health = players.use(key, [](Player const & p) -> int {
+    return p.health;
+});
+
+if (health) {
+    std::cout << "Health: " << *health << '\n';
+}
+
+// Extract computed value - returns std::optional<bool>
+auto is_alive = players.use(key, [](Player const & p) -> bool {
+    return p.health > 0;
+});
+
+// Extract a copy of a field - returns std::optional<std::string>
+auto name = players.use(key, [](Player const & p) -> std::string {
+    return p.name;  // Returns a copy
+});
+
+if (name) {
+    std::cout << "Player name: " << *name << '\n';
+}
+
+// Extract and erase - returns std::optional<int> with old value
+auto new_score = players.use(key, [](Player & p) -> int {
+    p.score += 100;
+    return p.score;
+});
+std::cout << "New score: " << new_score.value_or(0) << '\n';
+```
+
+#### Conditional Extract and Erase
+
+```cpp
+// Extract value before erasing - returns std::optional<int>
+auto final_score = players.use(key,
+    [](Player & p, wjh::slotmap::Options & opts) -> int {
+        opts.erase = true;  // Request erasure
+        return p.score;     // Return final score before deletion
+    });
+
+if (final_score) {
+    std::cout << "Player removed with final score: " << *final_score << '\n';
+}
+
+// Conditional extract based on state
+auto extracted_value = map.use(key,
+    [](int & v, wjh::slotmap::Options & opts) -> std::optional<int> {
+        if (v > 100) {
+            opts.erase = true;
+            return v;  // Extract if removing
+        }
+        return std::nullopt;  // Don't extract if keeping
+    });
+
+// Note: Returns std::optional<std::optional<int>> - can be flattened
+if (extracted_value && *extracted_value) {
+    std::cout << "Extracted and removed: " << **extracted_value << '\n';
+}
+```
+
+#### Pattern: Safe Value Extraction Without Exceptions
+
+```cpp
+// Instead of throwing or using output parameters:
+std::optional<int> value;
+bool found = map.use(key, [&](int const & v) { value = v; });
+
+// Use direct return:
+auto value = map.use(key, [](int const & v) { return v; });
+if (value) {
+    // Process *value
+}
+
+// Or with value_or:
+int value = map.use(key, [](int const & v) { return v; })
+    .value_or(-1);  // -1 indicates not found
+```
+
+#### Pattern: Compute-If-Present
+
+```cpp
+// Compute expensive operation only if element exists
+auto result = map.use(key, [](ComplexObject const & obj) -> ExpensiveResult {
+    return obj.compute_expensive_operation();
+});
+
+if (result) {
+    cache_result(*result);
+}
+
+// Chain multiple lookups with and_then
+auto final_result = map.use(key1, [](int v) { return v; })
+    .and_then([&](int v1) {
+        return map.use(key2, [v1](int v2) { return v1 + v2; });
+    });
+```
+
+#### Pattern: Extract Multiple Fields
+
+```cpp
+struct Stats {
+    int health;
+    int mana;
+};
+
+// Extract multiple fields into a struct
+auto stats = players.use(key, [](Player const & p) -> Stats {
+    return Stats{p.health, p.mana};
+});
+
+if (stats) {
+    render_hud(stats->health, stats->mana);
+}
+
+// Or use structured bindings with tuple
+auto values = players.use(key, [](Player const & p) {
+    return std::tuple{p.health, p.mana, p.score};
+});
+
+if (values) {
+    auto [health, mana, score] = *values;
+    // Use extracted values
+}
+```
+
+#### Pattern: Type Transformation
+
+```cpp
+// Convert to a different type
+auto json_data = players.use(key, [](Player const & p) -> std::string {
+    return serialize_to_json(p);
+});
+
+// Transform to view type
+auto player_view = players.use(key, [](Player const & p) -> PlayerView {
+    return PlayerView{p.name, p.health > 0};
 });
 ```
 
 ---
 
-#### contains()
+### Return Type Selection
 
+The return type is automatically selected based on the callback's signature:
+
+```cpp
+// void callback -> bool return
+bool success = map.use(key, [](int & v) {
+    v += 1;  // void return
+});
+
+// int callback -> std::optional<int> return
+std::optional<int> value = map.use(key, [](int const & v) -> int {
+    return v;
+});
+
+// auto deduction works perfectly
+auto result1 = map.use(key, [](int & v) { v += 1; });        // bool
+auto result2 = map.use(key, [](int const & v) { return v; }); // std::optional<int>
+```
+
+---
+
+### Backward Compatibility
+
+All existing code using void callbacks continues to work unchanged:
+
+```cpp
+// All of these still return bool and work as before
+map.use(key, [](int & v) { v *= 2; });
+map.use(key, [](int & v, wjh::slotmap::Options & opts) {
+    opts.erase = true;
+});
+map.use(key, [](MyKey k, int & v) {
+    std::cout << k.index().value << '\n';
+});
+```
+
+---
+
+### Performance Notes
+
+- **Zero overhead for void callbacks**: When the callback returns void, the implementation is identical to the previous version - just returns bool.
+
+- **Move semantics for return values**: Return values are moved efficiently using RVO/NRVO.
+
+- **Optional construction**: The `std::optional` is only constructed if the key is valid and the callback executes.
+
+- **No heap allocation**: Everything operates on the stack unless the returned type itself allocates.
+
+---
+
+### Common Pitfalls
+
+#### 1. Nested Optionals
+
+When returning `std::optional<T>` from a callback, the result is `std::optional<std::optional<T>>`:
+
+```cpp
+// Returns std::optional<std::optional<int>>
+auto result = map.use(key, [](int v) -> std::optional<int> {
+    if (v > 0) return v;
+    return std::nullopt;
+});
+
+// Must handle both levels
+if (result) {           // Key was valid
+    if (*result) {      // Callback returned a value
+        int val = **result;
+    }
+}
+
+// Consider returning a value directly or using a wrapper type instead
+auto result = map.use(key, [](int v) -> int {
+    return std::max(0, v);  // Returns int, never nested optional
+});
+```
+
+#### 2. Lifetime of Returned References
+
+Don't return references to the slot map's internal data:
+
+```cpp
+// DANGER: Returns dangling reference wrapped in optional
+auto bad = map.use(key, [](int & v) -> int& {
+    return v;  // BAD: reference to internal storage
+});
+
+// GOOD: Return by value
+auto good = map.use(key, [](int const & v) -> int {
+    return v;  // Returns a copy
+});
+```
+
+#### 3. Forgetting to Check the Optional
+
+Always check the optional before using it:
+
+```cpp
+// DANGER: May dereference nullopt
+auto value = map.use(key, [](int v) { return v; });
+process(*value);  // BAD: what if key was invalid?
+
+// GOOD: Check first
+if (auto value = map.use(key, [](int v) { return v; })) {
+    process(*value);
+}
+
+// Or use value_or
+auto value = map.use(key, [](int v) { return v; })
+    .value_or(default_value);
+```
+
+---
+
+### Advanced Examples
+
+#### Error Propagation with Expected/Result Types
+
+```cpp
+// Using std::expected (C++23) or similar result types
+using Result = std::expected<int, ErrorCode>;
+
+auto result = map.use(key, [](Player & p) -> Result {
+    if (p.health <= 0) {
+        return std::unexpected(ErrorCode::PlayerDead);
+    }
+    p.health -= 10;
+    return p.health;
+});
+
+// Result is std::optional<std::expected<int, ErrorCode>>
+if (result) {
+    if (*result) {
+        std::cout << "New health: " << **result << '\n';
+    } else {
+        std::cerr << "Error: " << result->error() << '\n';
+    }
+} else {
+    std::cerr << "Player not found\n";
+}
+```
+
+#### Monadic Chaining
+
+```cpp
+// Use and_then for monadic composition
+auto final_result = map.use(key1, [](int v) { return v; })
+    .and_then([&](int v1) {
+        return map.use(key2, [v1](int v2) {
+            return v1 * v2;
+        });
+    })
+    .and_then([](int product) {
+        return product > 0 ? std::optional{product} : std::nullopt;
+    });
+
+if (final_result) {
+    std::cout << "Final: " << *final_result << '\n';
+}
+```
+
+#### Extraction for Serialization
+
+```cpp
+// Extract data for network transmission
+auto packet = map.use(key, [](GameEntity const & entity) -> Packet {
+    return Packet{
+        .position = entity.position,
+        .velocity = entity.velocity,
+        .health = entity.health
+    };
+});
+
+if (packet) {
+    network.send(*packet);
+}
+```
+
+---
 ```cpp
 [[nodiscard]]
 bool contains(key_type key) const;

@@ -59,6 +59,7 @@ add_slotmap_test(
         SlotMap_statistics_ut.cpp
         SlotMap_single_slab_ut.cpp
         SlotMap_traits_ut.cpp
+        SlotMap_use_return_values_ut.cpp
 )
 
 add_slotmap_test(

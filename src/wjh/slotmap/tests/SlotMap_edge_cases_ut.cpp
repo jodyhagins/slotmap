@@ -244,7 +244,7 @@ TEST_CASE("SlotMap: edge case - 1-bit version field")
             CHECK(map.contains(key));
 
             int val = 0;
-            map.use(key, [&](int const & v) { val = v; });
+            (void)map.use(key, [&](int const & v) { val = v; });
             CHECK(val == cycle);
 
             map.erase(key);
@@ -347,7 +347,7 @@ TEST_CASE("SlotMap: edge case - single slot slab")
         CHECK(map.size().value == 1);
 
         int val = 0;
-        map.use(key, [&](int const & v) { val = v; });
+        (void)map.use(key, [&](int const & v) { val = v; });
         CHECK(val == 42);
 
         map.erase(key);
@@ -368,9 +368,9 @@ TEST_CASE("SlotMap: edge case - single slot slab")
         // All elements accessible
         for (int i = 0; i < 10; ++i) {
             int val = 0;
-            map.use(keys[static_cast<std::size_t>(i)], [&](int const & v) {
-                val = v;
-            });
+            (void)map.use(
+                keys[static_cast<std::size_t>(i)],
+                [&](int const & v) { val = v; });
             CHECK(val == i);
         }
     }
@@ -453,7 +453,7 @@ TEST_CASE("SlotMap: edge case - 64-bit key")
         CHECK(map.contains(key));
 
         int val = 0;
-        map.use(key, [&](int const & v) { val = v; });
+        (void)map.use(key, [&](int const & v) { val = v; });
         CHECK(val == 42);
 
         map.erase(key);

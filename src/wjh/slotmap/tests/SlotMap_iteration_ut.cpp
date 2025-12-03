@@ -262,8 +262,8 @@ TEST_CASE("for_each modification through non-const")
     map.for_each([](int & v) { v *= 2; });
 
     int v1 = 0, v2 = 0;
-    map.use(key1, [&](int const & v) { v1 = v; });
-    map.use(key2, [&](int const & v) { v2 = v; });
+    (void)map.use(key1, [&](int const & v) { v1 = v; });
+    (void)map.use(key2, [&](int const & v) { v2 = v; });
 
     CHECK(v1 == 20);
     CHECK(v2 == 40);

@@ -94,7 +94,7 @@ run_game_lifecycle(benchmark::State & state, std::size_t n)
             auto lookup_count = keys.size() / 10;
             for (std::size_t i = 0; i < lookup_count && not keys.empty(); ++i) {
                 std::size_t idx = dist(get_rng()) % keys.size();
-                sm.use(keys[idx], [](SmallValue const & v) {
+                (void)sm.use(keys[idx], [](SmallValue const & v) {
                     std::uint64_t tmp = v.data;
                     benchmark::DoNotOptimize(tmp);
                 });
@@ -252,7 +252,9 @@ run_slotmap_static_lookup(benchmark::State & state, std::size_t n)
     std::size_t found = 0;
     for (auto _ : state) {
         for (std::size_t idx : lookup_indices) {
-            sm.use(keys[idx], [&](SmallValue const & v) { found += v.data; });
+            (void)sm.use(keys[idx], [&](SmallValue const & v) {
+                found += v.data;
+            });
         }
     }
 
@@ -525,12 +527,12 @@ run_slotmap_ycsb_a(benchmark::State & state, std::size_t n)
             std::size_t idx = key_dist(get_rng());
             if (op_dist(get_rng()) == 0) {
                 // Read
-                sm.use(keys[idx], [&](SmallValue const & v) {
+                (void)sm.use(keys[idx], [&](SmallValue const & v) {
                     read_sum += v.data;
                 });
             } else {
                 // Update (read-modify-write)
-                sm.use(keys[idx], [i](SmallValue & v) { v.data = i; });
+                (void)sm.use(keys[idx], [i](SmallValue & v) { v.data = i; });
             }
         }
     }
@@ -637,12 +639,12 @@ run_slotmap_ycsb_b(benchmark::State & state, std::size_t n)
             std::size_t idx = key_dist(get_rng());
             if (op_dist(get_rng()) != 0) {
                 // Read (95%)
-                sm.use(keys[idx], [&](SmallValue const & v) {
+                (void)sm.use(keys[idx], [&](SmallValue const & v) {
                     read_sum += v.data;
                 });
             } else {
                 // Update (5%)
-                sm.use(keys[idx], [i](SmallValue & v) { v.data = i; });
+                (void)sm.use(keys[idx], [i](SmallValue & v) { v.data = i; });
             }
         }
     }

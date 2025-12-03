@@ -90,7 +90,7 @@ TEST_CASE("Single-slab SlotMap: basic emplace and use")
     CHECK(key1 != SmallKey::null());
 
     bool found = false;
-    map.use(key1, [&](int value) {
+    (void)map.use(key1, [&](int value) {
         CHECK(value == 42);
         found = true;
     });
@@ -229,8 +229,8 @@ TEST_CASE("Single-slab SlotMap: copy operations")
         for (std::size_t i = 0; i < keys.size(); ++i) {
             int val1 = 0;
             int val2 = 0;
-            map1.use(keys[i], [&](int v) { val1 = v; });
-            map2.use(keys[i], [&](int v) { val2 = v; });
+            (void)map1.use(keys[i], [&](int v) { val1 = v; });
+            (void)map2.use(keys[i], [&](int v) { val2 = v; });
             CHECK(val1 == val2);
         }
 
@@ -328,9 +328,9 @@ TEST_CASE("Single-slab SlotMap: swap")
     int val1_before = 0;
     int val2_before = 0;
     int val3_before = 0;
-    map1.use(k1, [&](int v) { val1_before = v; });
-    map1.use(k2, [&](int v) { val2_before = v; });
-    map2.use(k3, [&](int v) { val3_before = v; });
+    (void)map1.use(k1, [&](int v) { val1_before = v; });
+    (void)map1.use(k2, [&](int v) { val2_before = v; });
+    (void)map2.use(k3, [&](int v) { val3_before = v; });
 
     map1.swap(map2);
 

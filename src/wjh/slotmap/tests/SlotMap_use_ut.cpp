@@ -80,7 +80,7 @@ TEST_SUITE("SlotMap::use with Options")
             auto k1 = map.emplace(100);
             auto k2 = map.emplace(200);
 
-            map.use(k1, [&](int & val, wjh::slotmap::Options & opts) {
+            (void)map.use(k1, [&](int & val, wjh::slotmap::Options & opts) {
                 values_seen.push_back(val);
                 opts.erase = true;
             });
@@ -93,7 +93,7 @@ TEST_SUITE("SlotMap::use with Options")
         }
 
         SUBCASE("callback can modify value before erase") {
-            map.use(key, [&](int & val, wjh::slotmap::Options & opts) {
+            (void)map.use(key, [&](int & val, wjh::slotmap::Options & opts) {
                 val = 999; // Modify before erase
                 opts.erase = true;
             });
@@ -210,7 +210,7 @@ TEST_SUITE("SlotMap::use with Options")
             CHECK(key_seen == key);
             CHECK(map.contains(key));
 
-            map.use(key, [](int & val) { CHECK(val == 200); });
+            (void)map.use(key, [](int & val) { CHECK(val == 200); });
         }
     }
 
@@ -265,7 +265,7 @@ TEST_SUITE("SlotMap::use with Options")
 
         SUBCASE("erase every other element") {
             for (std::size_t i = 0; i < keys.size(); i += 2) {
-                map.use(keys[i], [](int &, wjh::slotmap::Options & opts) {
+                (void)map.use(keys[i], [](int &, wjh::slotmap::Options & opts) {
                     opts.erase = true;
                 });
             }
@@ -283,7 +283,7 @@ TEST_SUITE("SlotMap::use with Options")
 
         SUBCASE("conditional erase based on value") {
             for (auto k : keys) {
-                map.use(k, [](int & val, wjh::slotmap::Options & opts) {
+                (void)map.use(k, [](int & val, wjh::slotmap::Options & opts) {
                     if (val >= 50) {
                         opts.erase = true;
                     }
@@ -322,10 +322,12 @@ TEST_SUITE("SlotMap::use with Options")
         }
 
         SUBCASE("modify then erase") {
-            map.use(key, [](std::string & val, wjh::slotmap::Options & opts) {
-                val += " world";
-                opts.erase = true;
-            });
+            (void)map.use(
+                key,
+                [](std::string & val, wjh::slotmap::Options & opts) {
+                    val += " world";
+                    opts.erase = true;
+                });
 
             CHECK(not map.contains(key));
         }
@@ -387,10 +389,12 @@ TEST_SUITE("SlotMap::use Options - Property tests")
 
                 // Use all elements without erase
                 for (auto key : keys) {
-                    map.use(key, [](int & val, wjh::slotmap::Options & opts) {
-                        val += 1;
-                        CHECK(opts.erase == false); // Default is false
-                    });
+                    (void)map.use(
+                        key,
+                        [](int & val, wjh::slotmap::Options & opts) {
+                            val += 1;
+                            CHECK(opts.erase == false); // Default is false
+                        });
                 }
 
                 // All elements should still exist
@@ -418,11 +422,13 @@ TEST_SUITE("SlotMap::use Options - Property tests")
                 // Erase even values
                 std::size_t expected_erased = 0;
                 for (auto key : keys) {
-                    map.use(key, [](int & val, wjh::slotmap::Options & opts) {
-                        if (val % 2 == 0) {
-                            opts.erase = true;
-                        }
-                    });
+                    (void)map.use(
+                        key,
+                        [](int & val, wjh::slotmap::Options & opts) {
+                            if (val % 2 == 0) {
+                                opts.erase = true;
+                            }
+                        });
                 }
 
                 for (auto val : values) {
@@ -473,7 +479,7 @@ TEST_SUITE("SlotMap::use Options - Property tests")
                 TestMap map;
                 auto key = map.emplace(value);
 
-                map.use(key, [](int &, wjh::slotmap::Options & opts) {
+                (void)map.use(key, [](int &, wjh::slotmap::Options & opts) {
                     opts.erase = true;
                 });
 
@@ -484,7 +490,7 @@ TEST_SUITE("SlotMap::use Options - Property tests")
                 TestMap map;
                 auto key = map.emplace(value);
 
-                map.use(
+                (void)map.use(
                     key,
                     [key](TestKey k, int &, wjh::slotmap::Options & opts) {
                         RC_ASSERT(k == key);
@@ -498,7 +504,9 @@ TEST_SUITE("SlotMap::use Options - Property tests")
                 TestMap map;
                 auto key = map.emplace(value);
 
-                map.use(key, [key](TestKey k, int &) { RC_ASSERT(k == key); });
+                (void)map.use(key, [key](TestKey k, int &) {
+                    RC_ASSERT(k == key);
+                });
 
                 RC_ASSERT(map.contains(key)); // Not erased
             }
@@ -507,7 +515,7 @@ TEST_SUITE("SlotMap::use Options - Property tests")
                 TestMap map;
                 auto key = map.emplace(value);
 
-                map.use(key, [](int &) {
+                (void)map.use(key, [](int &) {
                     // Do nothing
                 });
 

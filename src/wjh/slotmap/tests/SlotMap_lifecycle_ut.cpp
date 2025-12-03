@@ -250,7 +250,7 @@ TEST_CASE("SlotMap: swap")
         CHECK(map2.contains(key1));
 
         int v1 = 0;
-        map2.use(key1, [&](int const & v) { v1 = v; });
+        (void)map2.use(key1, [&](int const & v) { v1 = v; });
         CHECK(v1 == 42);
     }
 
@@ -305,7 +305,7 @@ TEST_CASE("SlotMap: copy construction")
         CHECK(copy.contains(key));
 
         int value = 0;
-        copy.use(key, [&](int const & v) { value = v; });
+        (void)copy.use(key, [&](int const & v) { value = v; });
         CHECK(value == 42);
     }
 
@@ -325,7 +325,7 @@ TEST_CASE("SlotMap: copy construction")
             CHECK(copy.contains(keys[i]));
 
             int value = 0;
-            copy.use(keys[i], [&](int const & v) { value = v; });
+            (void)copy.use(keys[i], [&](int const & v) { value = v; });
             CHECK(value == static_cast<int>(i * 10));
         }
     }
@@ -353,13 +353,13 @@ TEST_CASE("SlotMap: copy construction")
         SlotMap<Key<int, 16_ib, 16_vb>> copy(original);
 
         // Modify copy
-        copy.use(key, [](int & v) { v = 100; });
+        (void)copy.use(key, [](int & v) { v = 100; });
         auto key2 = copy.emplace(200);
 
         // Original should be unchanged
         CHECK(original.size().value == 1);
         int original_value = 0;
-        original.use(key, [&](int const & v) { original_value = v; });
+        (void)original.use(key, [&](int const & v) { original_value = v; });
         CHECK(original_value == 42);
         CHECK(not original.contains(key2));
     }
@@ -371,13 +371,13 @@ TEST_CASE("SlotMap: copy construction")
         SlotMap<Key<int, 16_ib, 16_vb>> copy(original);
 
         // Modify original
-        original.use(key, [](int & v) { v = 100; });
+        (void)original.use(key, [](int & v) { v = 100; });
         auto key2 = original.emplace(200);
 
         // Copy should be unchanged
         CHECK(copy.size().value == 1);
         int copy_value = 0;
-        copy.use(key, [&](int const & v) { copy_value = v; });
+        (void)copy.use(key, [&](int const & v) { copy_value = v; });
         CHECK(copy_value == 42);
         CHECK(not copy.contains(key2));
     }
@@ -404,7 +404,7 @@ TEST_CASE("SlotMap: copy construction")
             CHECK(copy.contains(keys[i]));
 
             int value = 0;
-            copy.use(keys[i], [&](int const & v) { value = v; });
+            (void)copy.use(keys[i], [&](int const & v) { value = v; });
             CHECK(value == static_cast<int>(i));
         }
 
@@ -424,8 +424,8 @@ TEST_CASE("SlotMap: copy construction")
         CHECK(copy.size().value == 2);
 
         std::string s1, s2;
-        copy.use(key1, [&](std::string const & s) { s1 = s; });
-        copy.use(key2, [&](std::string const & s) { s2 = s; });
+        (void)copy.use(key1, [&](std::string const & s) { s1 = s; });
+        (void)copy.use(key2, [&](std::string const & s) { s2 = s; });
 
         CHECK(s1 == "hello");
         CHECK(s2 == "world");
@@ -487,7 +487,7 @@ TEST_CASE("SlotMap: copy assignment")
 
         // Verify the value is correct
         int value = 0;
-        target.use(key1, [&](int const & v) { value = v; });
+        (void)target.use(key1, [&](int const & v) { value = v; });
         CHECK(value == 100);
 
         // key3 and key4 should be invalid since original only has one element

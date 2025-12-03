@@ -402,31 +402,110 @@ requires std::is_move_constructible_v<mapped_type>
 
 namespace detail {
 
-template <typename F, typename KeyT, typename ValT, typename... OptTs>
-void
-invoke_use(F & func, [[maybe_unused]] KeyT key, ValT & val, OptTs &... opts)
+template <typename F, typename KeyT, typename ValT>
+auto
+invoke_use(F & func, [[maybe_unused]] KeyT key, ValT & val)
 {
-    if constexpr (std::is_invocable_v<F &, KeyT, ValT &, OptTs &...>) {
-        std::invoke(func, key, val, opts...);
-    } else if constexpr (std::is_invocable_v<F &, KeyT, ValT &>) {
-        std::invoke(func, key, val);
-    } else if constexpr (std::is_invocable_v<F &, ValT &, OptTs &...>) {
-        std::invoke(func, val, opts...);
+    if constexpr (std::is_invocable_v<F &, KeyT, ValT &>) {
+        return std::invoke(func, key, val);
     } else {
-        std::invoke(func, val);
+        return std::invoke(func, val);
     }
 }
 
-template <typename SelfT, typename F, typename KeyT, typename ValT>
-inline constexpr bool use_callback_wants_options =
-    not std::is_const_v<std::remove_reference_t<SelfT>> &&
-    (std::is_invocable_v<F, KeyT, ValT, Options &> ||
-     std::is_invocable_v<F, ValT, Options &>);
+template <typename F, typename KeyT, typename ValT>
+auto
+invoke_use(F & func, [[maybe_unused]] KeyT key, ValT & val, Options & options)
+{
+    if constexpr (std::is_invocable_v<F &, KeyT, ValT &, Options &>) {
+        return std::invoke(func, key, val, options);
+    } else if constexpr (std::is_invocable_v<F &, KeyT, ValT &>) {
+        return std::invoke(func, key, val);
+    } else if constexpr (std::is_invocable_v<F &, ValT &, Options &>) {
+        return std::invoke(func, val, options);
+    } else {
+        return std::invoke(func, val);
+    }
+}
 
+template <typename SelfT, typename F>
+struct UseCallbackBase
+{
+    using self_type = std::remove_reference_t<SelfT>;
+    using W = typename self_type::mapped_type;
+    static constexpr bool is_self_const = std::is_const_v<self_type>;
+    using key_type = typename self_type::key_type;
+    using mapped_type = std::conditional_t<is_self_const, W const &, W &>;
+    static constexpr bool wants_options = not is_self_const &&
+        (std::is_invocable_v<F, key_type, mapped_type, Options &> ||
+         std::is_invocable_v<F, mapped_type, Options &>);
+};
 
-} // namespace detail
+template <typename SelfT, typename F>
+struct UseCallback
+: UseCallbackBase<SelfT, F>
+{
+    using Base = UseCallbackBase<SelfT, F>;
+    using result_type = decltype(invoke_use(
+        std::declval<F>(),
+        std::declval<typename Base::key_type>(),
+        std::declval<typename Base::mapped_type>()));
 
-namespace detail {
+    UseCallback(auto &&...) { }
+
+    auto operator () (auto & func, auto & key, auto & value)
+    {
+        if constexpr (std::is_void_v<result_type>) {
+            invoke_use(func, key, value);
+            return true;
+        } else {
+            return std::make_optional(invoke_use(func, key, value));
+        }
+    }
+};
+
+template <typename SlotMapT, typename F>
+requires UseCallbackBase<SlotMapT, F>::wants_options
+struct UseCallback<SlotMapT, F>
+: UseCallbackBase<SlotMapT, F>
+, Options
+{
+    using Base = UseCallbackBase<SlotMapT, F>;
+    using result_type = decltype(invoke_use(
+        std::declval<F>(),
+        std::declval<typename Base::key_type>(),
+        std::declval<typename Base::mapped_type>(),
+        std::declval<Options &>()));
+
+    SlotMapT & slotmap_;
+    typename Base::key_type key_;
+
+    UseCallback(SlotMapT & sm, typename SlotMapT::key_type k)
+    : Options{}
+    , slotmap_(sm)
+    , key_(k)
+    { }
+
+    void operator = (UseCallback &&) = delete;
+
+    ~UseCallback()
+    {
+        if (erase) {
+            slotmap_.erase(key_);
+        }
+    }
+
+    auto operator () (auto & func, auto & key, auto & value)
+    {
+        assert(key == key_);
+        if constexpr (std::is_void_v<result_type>) {
+            invoke_use(func, key, value, *this);
+            return true;
+        } else {
+            return std::make_optional(invoke_use(func, key, value, *this));
+        }
+    }
+};
 
 template <
     bool use_alive_bit_for_lookup,
@@ -454,15 +533,19 @@ is_valid(VersionT version, SlotT const & slot, SlabT const * slab, IndexT index)
 } // namespace detail
 
 template <typename TraitsT>
-bool
+auto
 BasicSlotMap<TraitsT>::
 use(auto & self, key_type key, auto & func)
 {
-    using detail::use_callback_wants_options;
-    using SelfT = std::remove_reference_t<decltype(self)>;
-    using KeyT = key_type;
-    using FuncT = decltype(func);
+    using self_type = std::remove_reference_t<decltype(self)>;
+    using Callback = detail::UseCallback<self_type, decltype(func)>;
+    using Return = std::conditional_t<
+        std::is_void_v<typename Callback::result_type>,
+        bool,
+        std::optional<typename Callback::result_type>>;
+    auto callback = Callback(self, key);
     auto const key_idx = key.index();
+
     if (auto * slab = self.storage_get_slab(key_idx)) {
         auto const slot_idx = self.storage_slot_index(key_idx);
         auto & slot = slab->slot(slot_idx);
@@ -472,32 +555,16 @@ use(auto & self, key_type key, auto & func)
                 slab,
                 slot_idx))
         {
-            auto & value = slot.value();
-            using ValT = decltype(value);
-
-            if constexpr (use_callback_wants_options<SelfT, FuncT, KeyT, ValT>)
-            {
-                // Invoke the callable with Options support
-                Options opts{};
-                detail::invoke_use(func, key, value, opts);
-
-                // Erase after callback if requested
-                if (opts.erase) {
-                    self.erase(key);
-                }
-            } else {
-                detail::invoke_use(func, key, value);
-            }
-
-            return true;
+            return callback(func, key, slot.value());
         }
     }
-    return false;
+    return Return{};
 }
 
 template <typename TraitsT>
 template <typename F>
-bool
+[[nodiscard]]
+auto
 BasicSlotMap<TraitsT>::
 use(key_type key, F && func)
 {
@@ -506,7 +573,8 @@ use(key_type key, F && func)
 
 template <typename TraitsT>
 template <typename F>
-bool
+[[nodiscard]]
+auto
 BasicSlotMap<TraitsT>::
 use(key_type key, F && func) const
 {

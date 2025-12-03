@@ -72,14 +72,14 @@ TEST_SUITE("alive_bit_trait - Basic Functionality")
 
         SUBCASE("lookup finds inserted elements") {
             bool found = false;
-            map.use(k1, [&](int val) {
+            (void)map.use(k1, [&](int val) {
                 found = true;
                 CHECK(val == 42);
             });
             CHECK(found);
 
             found = false;
-            map.use(k2, [&](int val) {
+            (void)map.use(k2, [&](int val) {
                 found = true;
                 CHECK(val == 99);
             });
@@ -90,12 +90,12 @@ TEST_SUITE("alive_bit_trait - Basic Functionality")
             CHECK(map.erase(k1));
 
             bool found = false;
-            map.use(k1, [&](int) { found = true; });
+            (void)map.use(k1, [&](int) { found = true; });
             CHECK_FALSE(found);
 
             // k2 still accessible
             found = false;
-            map.use(k2, [&](int val) {
+            (void)map.use(k2, [&](int val) {
                 found = true;
                 CHECK(val == 99);
             });
@@ -109,12 +109,12 @@ TEST_SUITE("alive_bit_trait - Basic Functionality")
 
             // Old key should not work (version mismatch)
             bool found = false;
-            map.use(k1, [&](int) { found = true; });
+            (void)map.use(k1, [&](int) { found = true; });
             CHECK_FALSE(found);
 
             // New key should work
             found = false;
-            map.use(k1_new, [&](int val) {
+            (void)map.use(k1_new, [&](int val) {
                 found = true;
                 CHECK(val == 100);
             });
@@ -130,7 +130,7 @@ TEST_SUITE("alive_bit_trait - Basic Functionality")
 
         SUBCASE("lookup finds inserted elements") {
             bool found = false;
-            map.use(k1, [&](int val) {
+            (void)map.use(k1, [&](int val) {
                 found = true;
                 CHECK(val == 42);
             });
@@ -141,12 +141,12 @@ TEST_SUITE("alive_bit_trait - Basic Functionality")
             CHECK(map.erase(k1));
 
             bool found = false;
-            map.use(k1, [&](int) { found = true; });
+            (void)map.use(k1, [&](int) { found = true; });
             CHECK_FALSE(found);
 
             // k2 still accessible
             found = false;
-            map.use(k2, [&](int val) {
+            (void)map.use(k2, [&](int val) {
                 found = true;
                 CHECK(val == 99);
             });
@@ -164,7 +164,7 @@ TEST_SUITE("alive_bit_trait - Combined Version+Alive Check")
 
         SUBCASE("alive slot with matching version") {
             bool found = false;
-            map.use(k, [&](int val) {
+            (void)map.use(k, [&](int val) {
                 found = true;
                 CHECK(val == 42);
             });
@@ -175,7 +175,7 @@ TEST_SUITE("alive_bit_trait - Combined Version+Alive Check")
             map.erase(k);
 
             bool found = false;
-            map.use(k, [&](int) { found = true; });
+            (void)map.use(k, [&](int) { found = true; });
             CHECK_FALSE(found);
         }
 
@@ -192,7 +192,7 @@ TEST_SUITE("alive_bit_trait - Combined Version+Alive Check")
                 k2.user());
 
             bool found = false;
-            map.use(wrong_key, [&](int) { found = true; });
+            (void)map.use(wrong_key, [&](int) { found = true; });
             CHECK_FALSE(found);
         }
     }
@@ -226,14 +226,14 @@ TEST_SUITE("alive_bit_trait - Combined Version+Alive Check")
         SUBCASE("old keys don't match (version mismatch)") {
             for (auto const & old_key : old_keys) {
                 bool found = false;
-                map.use(old_key, [&](int) { found = true; });
+                (void)map.use(old_key, [&](int) { found = true; });
                 CHECK_FALSE(found);
             }
         }
 
         SUBCASE("new key works correctly") {
             bool found = false;
-            map.use(k_new, [&](int val) {
+            (void)map.use(k_new, [&](int val) {
                 found = true;
                 CHECK(val == 999);
             });
@@ -251,7 +251,7 @@ TEST_SUITE("alive_bit_trait - Edge Cases")
 
         auto null_key = EmbeddedKey::null();
         bool found = false;
-        map.use(null_key, [&](int) { found = true; });
+        (void)map.use(null_key, [&](int) { found = true; });
         CHECK_FALSE(found);
     }
 
@@ -269,7 +269,7 @@ TEST_SUITE("alive_bit_trait - Edge Cases")
             k.user());
 
         bool found = false;
-        map.use(invalid_key, [&](int) { found = true; });
+        (void)map.use(invalid_key, [&](int) { found = true; });
         CHECK_FALSE(found);
     }
 
@@ -322,7 +322,7 @@ TEST_SUITE("alive_bit_trait - Property-Based Tests")
                 for (std::size_t i = 0; i < keys.size(); ++i) {
                     bool found = false;
                     int seen_value = -1;
-                    map.use(keys[i], [&](int val) {
+                    (void)map.use(keys[i], [&](int val) {
                         found = true;
                         seen_value = val;
                     });
@@ -349,7 +349,7 @@ TEST_SUITE("alive_bit_trait - Property-Based Tests")
                 // Verify correct keys remain
                 for (std::size_t i = 0; i < keys.size(); ++i) {
                     bool found = false;
-                    map.use(keys[i], [&](int) { found = true; });
+                    (void)map.use(keys[i], [&](int) { found = true; });
                     RC_ASSERT(found == not erased[i]);
                 }
             });
@@ -375,7 +375,7 @@ TEST_SUITE("alive_bit_trait - Property-Based Tests")
             for (std::size_t i = 0; i < keys.size(); ++i) {
                 bool found = false;
                 int seen_value = -1;
-                map.use(keys[i], [&](int val) {
+                (void)map.use(keys[i], [&](int val) {
                     found = true;
                     seen_value = val;
                 });
@@ -411,11 +411,11 @@ TEST_SUITE("alive_bit_trait - Property-Based Tests")
                 bool found1 = false, found2 = false;
                 int val1 = -1, val2 = -1;
 
-                enabled_map.use(key, [&](int v) {
+                (void)enabled_map.use(key, [&](int v) {
                     found1 = true;
                     val1 = v;
                 });
-                disabled_map.use(key, [&](int v) {
+                (void)disabled_map.use(key, [&](int v) {
                     found2 = true;
                     val2 = v;
                 });
@@ -514,7 +514,7 @@ TEST_SUITE("alive_bit_trait - Integration with Other Operations")
         EmbeddedMap const & const_map = map;
 
         bool found = false;
-        const_map.use(k, [&](int const & val) {
+        (void)const_map.use(k, [&](int const & val) {
             found = true;
             CHECK(val == 42);
         });
@@ -523,7 +523,7 @@ TEST_SUITE("alive_bit_trait - Integration with Other Operations")
         // Erased key should not be found via const access
         map.erase(k);
         found = false;
-        const_map.use(k, [&](int const &) { found = true; });
+        (void)const_map.use(k, [&](int const &) { found = true; });
         CHECK_FALSE(found);
     }
 }

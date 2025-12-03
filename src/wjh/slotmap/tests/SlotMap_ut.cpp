@@ -297,7 +297,7 @@ TEST_CASE("SlotMap: emplace constructs value correctly")
 
     auto key = map.emplace(42);
     bool found = false;
-    map.use(key, [&](int const & v) {
+    (void)map.use(key, [&](int const & v) {
         found = true;
         CHECK(v == 42);
     });
@@ -393,7 +393,7 @@ TEST_CASE("SlotMap: try_emplace constructs value correctly")
     CHECK(not key.is_null());
 
     bool found = false;
-    map.use(key, [&](int const & v) {
+    (void)map.use(key, [&](int const & v) {
         found = true;
         CHECK(v == 42);
     });
@@ -603,10 +603,10 @@ TEST_CASE("SlotMap: use invokes callable with value")
     }
 
     SUBCASE("modify through use") {
-        map.use(key, [](int & v) { v = 100; });
+        (void)map.use(key, [](int & v) { v = 100; });
 
         int value = 0;
-        map.use(key, [&](int const & v) { value = v; });
+        (void)map.use(key, [&](int const & v) { value = v; });
         CHECK(value == 100);
     }
 }
@@ -759,8 +759,8 @@ TEST_CASE("SlotMap: move preserves data")
         CHECK(moved.contains(key2));
 
         int v1 = 0, v2 = 0;
-        moved.use(key1, [&](int const & v) { v1 = v; });
-        moved.use(key2, [&](int const & v) { v2 = v; });
+        (void)moved.use(key1, [&](int const & v) { v1 = v; });
+        (void)moved.use(key2, [&](int const & v) { v2 = v; });
         CHECK(v1 == 42);
         CHECK(v2 == 100);
     }
@@ -832,7 +832,7 @@ TEST_CASE("SlotMap: property-based multiple values")
 
         for (std::size_t i = 0; i < values.size(); ++i) {
             int found = 0;
-            map.use(keys[i], [&](int const & v) { found = v; });
+            (void)map.use(keys[i], [&](int const & v) { found = v; });
             RC_ASSERT(found == values[i]);
         }
 
@@ -1049,7 +1049,7 @@ TEST_CASE("SlotMap 16-bit: different bit configurations")
         CHECK(map.contains(key));
 
         int value = 0;
-        map.use(key, [&](int const & v) { value = v; });
+        (void)map.use(key, [&](int const & v) { value = v; });
         CHECK(value == 42);
     }
 
@@ -1105,8 +1105,8 @@ TEST_CASE("SlotMap 16-bit: move operations preserve data")
         CHECK(moved.contains(key2));
 
         int v1 = 0, v2 = 0;
-        moved.use(key1, [&](int const & v) { v1 = v; });
-        moved.use(key2, [&](int const & v) { v2 = v; });
+        (void)moved.use(key1, [&](int const & v) { v1 = v; });
+        (void)moved.use(key2, [&](int const & v) { v2 = v; });
         CHECK(v1 == 42);
         CHECK(v2 == 100);
     }
@@ -1173,7 +1173,7 @@ TEST_CASE("SlotMap 16-bit: property-based multiple values")
 
         for (std::size_t i = 0; i < values.size(); ++i) {
             int found = 0;
-            map.use(keys[i], [&](int const & v) { found = v; });
+            (void)map.use(keys[i], [&](int const & v) { found = v; });
             RC_ASSERT(found == values[i]);
         }
     });

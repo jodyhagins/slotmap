@@ -172,19 +172,38 @@ public:
     // ========================================================================
 
     /**
-     * Access an element by key.
+     * Access an element by key with callback.
      *
-     * If key is valid and refers to an alive element, invokes func(value).
+     * If key is valid and refers to an alive element, invokes func(value) and
+     * returns the result. The callback can:
+     * - Return void: use() returns bool (true if found, false otherwise)
+     * - Return R: use() returns std::optional<R> (value if found, nullopt
+     *             otherwise)
+     *
+     * Supported callback signatures:
+     * - R (key_type, T &, Options &) [non-const only]
+     * - R (key_type, T &)
+     * - R (T &, Options &) [non-const only]
+     * - R (T &)
+     *
+     * When Options is available (non-const SlotMap), you can:
+     * - Set options.erase = true to erase the element after the callback
      *
      * @param key The key to look up
-     * @param func Callable with signature void(T&) or void(T const&)
-     * @return true if element was found and func was called, false otherwise
+     * @param func Callable to invoke if key is valid
+     * @return For void callbacks: bool (true if found)
+     *         For non-void callbacks: std::optional<R> (result if found,
+     * nullopt otherwise)
+     *
+     * @note The const overload does not support Options parameter.
      */
     template <typename F>
-    bool use(key_type key, F && func);
+    [[nodiscard]]
+    auto use(key_type key, F && func);
 
     template <typename F>
-    bool use(key_type key, F && func) const;
+    [[nodiscard]]
+    auto use(key_type key, F && func) const;
 
     /**
      * Check if a key refers to an alive element.
@@ -376,7 +395,7 @@ private:
     bool allocate_new_slab();
     void initialize_slab_free_list(slab_type * slab, index_type base);
     static size_type for_each(auto & self, auto & func);
-    static bool use(auto & self, key_type key, auto & func);
+    static auto use(auto & self, key_type key, auto & func);
 };
 
 /**
