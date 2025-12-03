@@ -41,9 +41,7 @@ namespace wjh::slotmap {
 template <typename T, IndexBits I, VersionBits V, UserBits U = UserBits(0)>
 class Key
 : private detail::KeyBase<
-      detail::storage_type_t<
-          static_cast<unsigned>(I) + static_cast<unsigned>(V) +
-          static_cast<unsigned>(U)>,
+      detail::storage_type_t<unsigned(I) + unsigned(V) + unsigned(U)>,
       T>
 {
     static constexpr unsigned index_bits_value = static_cast<unsigned>(I);

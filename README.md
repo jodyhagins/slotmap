@@ -25,15 +25,15 @@ SlotMap storage (slabs of slots):
 
 ```cpp
 #include <wjh/slotmap.hpp>
+using namespace wjh::slotmap;
 
 struct Player {
     std::string name;
     int health;
 };
 
-// Define a key type: 16 index bits, 16 version bits, 0 user bits
-using PlayerKey = wjh::SlotMapKey<Player, 16, 16>;
-wjh::SlotMap<PlayerKey> players;
+// The map will have a key type with 17 index bits, 15 version bits, 0 user bits
+SlotMap<Player, IndexBits(17), VersionBits(15)> players;
 
 // Insert - container generates the key (throws if capacity exhausted)
 auto key = players.emplace("Alice", 100);
@@ -61,7 +61,6 @@ players.erase(key);
 - **Strong types throughout**: `index_type`, `version_type`, `size_type` are distinct types, not raw integers
 - **Fixed capacity**: Maximum simultaneous elements = 2^IndexBits; maximum total insertions = 2^IndexBits × 2^VersionBits - 1
 - **No iterators**: Access is via `use()` callback or `for_each()` - deliberate design to prevent dangling iterator bugs
-- **Constexpr keys**: All key operations are constexpr
 - **Null key safety**: The all-zeros key is reserved and never returned by `emplace()`. The null key can be obtained from `try_emplace()` when capacity is exhausted.
 
 ## How This Implementation Differs
@@ -90,7 +89,7 @@ players.for_each([](Player & p) {
 
 Once a slot exhausts its version bits, it's permanently dead. The map has a finite total lifetime (2^IndexBits × 2^VersionBits -1 insertions). This is intentional - it guarantees that old keys **never** accidentally refer to new data, even after billions of operations. Other implementations may wrap versions around.
 
-With a 16-bit version field, a single slot can be reused 65,536 times before becoming permanently dead. When all slots in a slab become dead, the slab can be recycled to a new index range with reset versions.
+With a 16-bit version field, a single slot can be reused 65,536 times before becoming permanently dead.
 
 **Note**: The very first slot, at index 0, starts with a version of 1, so it can only have 2^VersionBits -1 insertions. This is because we never want to generate a key where both the index and version are 0.
 
