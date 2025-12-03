@@ -19,6 +19,8 @@
 
 namespace bench {
 
+using namespace wjh::slotmap_literals;
+
 // ============================================================================
 // Test Value Types
 // ============================================================================
@@ -48,34 +50,34 @@ struct LargeValue
 // ============================================================================
 
 // For ~100 elements: 8 index bits = 256 max slots, 24 version bits
-using SmallKey100 = wjh::slotmap::Key<SmallValue, 7, 25>;
-using LargeKey100 = wjh::slotmap::Key<LargeValue, 7, 25>;
+using SmallKey100 = wjh::slotmap::Key<SmallValue, 7_ib, 25_vb>;
+using LargeKey100 = wjh::slotmap::Key<LargeValue, 7_ib, 25_vb>;
 
 // For ~1000 elements: 10 index bits = 1024 max slots, 22 version bits
-using SmallKey1K = wjh::slotmap::Key<SmallValue, 10, 22>;
-using LargeKey1K = wjh::slotmap::Key<LargeValue, 10, 22>;
+using SmallKey1K = wjh::slotmap::Key<SmallValue, 10_ib, 22_vb>;
+using LargeKey1K = wjh::slotmap::Key<LargeValue, 10_ib, 22_vb>;
 
 // For ~4096 elements: 13 index bits = 8192 max slots, 19 version bits
-using SmallKey4K = wjh::slotmap::Key<SmallValue, 13, 19>;
-using LargeKey4K = wjh::slotmap::Key<LargeValue, 13, 19>;
+using SmallKey4K = wjh::slotmap::Key<SmallValue, 13_ib, 19_vb>;
+using LargeKey4K = wjh::slotmap::Key<LargeValue, 13_ib, 19_vb>;
 
 // For ~32K elements: 16 index bits = 65536 max slots, 16 version bits
-using SmallKey32K = wjh::slotmap::Key<SmallValue, 15, 17>;
-using LargeKey32K = wjh::slotmap::Key<LargeValue, 15, 17>;
+using SmallKey32K = wjh::slotmap::Key<SmallValue, 15_ib, 17_vb>;
+using LargeKey32K = wjh::slotmap::Key<LargeValue, 15_ib, 17_vb>;
 
 // For ~262K elements: 18 index bits = 262144 max slots, 14 version bits
 // Using 64-bit key to fit 18+14=32... wait, that's 32. Let's use 32-bit.
 // Actually 18+14=32, so we can use 32-bit key.
-using SmallKey262K = wjh::slotmap::Key<SmallValue, 18, 14>;
-using LargeKey262K = wjh::slotmap::Key<LargeValue, 18, 14>;
+using SmallKey262K = wjh::slotmap::Key<SmallValue, 18_ib, 14_vb>;
+using LargeKey262K = wjh::slotmap::Key<LargeValue, 18_ib, 14_vb>;
 
 // For ~1M elements: 20 index bits = 1048576 max slots, 12 version bits
-using SmallKey1M = wjh::slotmap::Key<SmallValue, 20, 12>;
-using LargeKey1M = wjh::slotmap::Key<LargeValue, 20, 12>;
+using SmallKey1M = wjh::slotmap::Key<SmallValue, 20_ib, 12_vb>;
+using LargeKey1M = wjh::slotmap::Key<LargeValue, 20_ib, 12_vb>;
 
 // Standard 32/32 configuration for comparison (64-bit key)
-using SmallKey32_32 = wjh::slotmap::Key<SmallValue, 32, 32>;
-using LargeKey32_32 = wjh::slotmap::Key<LargeValue, 32, 32>;
+using SmallKey32_32 = wjh::slotmap::Key<SmallValue, 32_ib, 32_vb>;
+using LargeKey32_32 = wjh::slotmap::Key<LargeValue, 32_ib, 32_vb>;
 
 // ============================================================================
 // Configuration Aliases

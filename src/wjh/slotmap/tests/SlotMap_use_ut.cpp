@@ -14,8 +14,9 @@
 #include "testing/rapidcheck.hpp"
 
 namespace {
+using namespace wjh::slotmap::literals;
 
-using TestKey = wjh::slotmap::Key<int, 20, 12>;
+using TestKey = wjh::slotmap::Key<int, 20_ib, 12_vb>;
 using TestMap = wjh::SlotMap<TestKey>;
 
 } // anonymous namespace
@@ -298,7 +299,7 @@ TEST_SUITE("SlotMap::use with Options")
 
     TEST_CASE("use with Options and string values")
     {
-        using StringKey = wjh::slotmap::Key<std::string, 20, 12>;
+        using StringKey = wjh::slotmap::Key<std::string, 20_ib, 12_vb>;
         using StringMap = wjh::SlotMap<StringKey>;
 
         StringMap map;

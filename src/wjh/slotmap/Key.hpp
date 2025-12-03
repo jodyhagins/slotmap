@@ -8,6 +8,7 @@
 #define WJH_SLOTMAP_073D1EC2FEF04177914D3CC646306810
 
 #include "detail.hpp"
+#include "types.hpp"
 
 #include <cassert>
 #include <compare>
@@ -23,49 +24,54 @@ namespace wjh::slotmap {
  * the purpose of @p Key, this is a phantom type for type, because it is not
  * used.
  *
- * @tparam IndexBits  Number of bits allocated for the index field. Must be
+ * @tparam I  Number of bits allocated for the index field. Must be
  * greater than 0.
  *
- * @tparam VersionBits  Number of bits allocated for the version field. Must be
+ * @tparam V  Number of bits allocated for the version field. Must be
  * greater than 0.
  *
- * @tparam UserBits  Number of bits allocated for user-defined data. If 0, there
+ * @tparam U  Number of bits allocated for user-defined data. If 0, there
  * are no user controlled bits. Defaults to 0.
  *
- * The sum of IndexBits + VersionBits + UserBits must equal 16, 32, 64, or 128.
+ * The sum of I + V + U must equal 16, 32, 64, or 128.
  * 128-bit keys are only supported on platforms with __uint128_t.
  *
  * Bit layout: [user][version][index] from MSB to LSB.
  */
-template <
-    typename T,
-    unsigned IndexBits,
-    unsigned VersionBits,
-    unsigned UserBits = 0>
+template <typename T, IndexBits I, VersionBits V, UserBits U = UserBits(0)>
 class Key
-: private detail::
-      KeyBase<detail::storage_type_t<IndexBits + VersionBits + UserBits>, T>
+: private detail::KeyBase<
+      detail::storage_type_t<
+          static_cast<unsigned>(I) + static_cast<unsigned>(V) +
+          static_cast<unsigned>(U)>,
+      T>
 {
-    static_assert(IndexBits > 0);
-    static_assert(IndexBits < 64);
-    static_assert(VersionBits > 0);
-    static constexpr unsigned num_bits = IndexBits + VersionBits + UserBits;
+    static constexpr unsigned index_bits_value = static_cast<unsigned>(I);
+    static constexpr unsigned version_bits_value = static_cast<unsigned>(V);
+    static constexpr unsigned user_bits_value = static_cast<unsigned>(U);
+
+    static_assert(index_bits_value > 0);
+    static_assert(index_bits_value < 64);
+    static_assert(version_bits_value > 0);
+    static_assert(version_bits_value < 64);
+    static constexpr unsigned num_bits = index_bits_value + version_bits_value +
+        user_bits_value;
     using Base = detail::KeyBase<detail::storage_type_t<num_bits>, T>;
     template <unsigned N, typename DerivedT>
     using TypeBase = detail::TypeBase<N, DerivedT>;
 
     struct Index
-    : TypeBase<IndexBits, Index>
+    : TypeBase<index_bits_value, Index>
     {
-        using TypeBase<IndexBits, Index>::TypeBase;
+        using TypeBase<index_bits_value, Index>::TypeBase;
     };
 
     using naked_index_type = typename Index::value_type;
 
     struct Size
-    : TypeBase<IndexBits + 1, Size>
+    : TypeBase<index_bits_value + 1, Size>
     {
-        using TypeBase<IndexBits + 1, Size>::TypeBase;
+        using TypeBase<index_bits_value + 1, Size>::TypeBase;
 
         constexpr Size(Index index)
         : Size(index.value)
@@ -78,20 +84,20 @@ class Key
     using naked_size_type = typename Size::value_type;
 
     struct Version
-    : TypeBase<VersionBits, Version>
+    : TypeBase<version_bits_value, Version>
     {
-        using TypeBase<VersionBits, Version>::TypeBase;
+        using TypeBase<version_bits_value, Version>::TypeBase;
     };
 
     using naked_version_type = typename Version::value_type;
 
     class User
-    : public TypeBase<UserBits, User>
+    : public TypeBase<user_bits_value, User>
     {
-        using Base = TypeBase<UserBits, User>;
+        using Base = TypeBase<user_bits_value, User>;
 
     public:
-        using value_type = typename TypeBase<UserBits, User>::value_type;
+        using value_type = typename TypeBase<user_bits_value, User>::value_type;
         using Base::Base;
 
         constexpr User(std::unsigned_integral auto v)
@@ -115,9 +121,9 @@ public:
     // ========================================================================
     // Compile-time constants
     // ========================================================================
-    static constexpr unsigned index_bits = IndexBits;
-    static constexpr unsigned version_bits = VersionBits;
-    static constexpr unsigned user_bits = UserBits;
+    static constexpr unsigned index_bits = index_bits_value;
+    static constexpr unsigned version_bits = version_bits_value;
+    static constexpr unsigned user_bits = user_bits_value;
 
     // ========================================================================
     // Special member functions
@@ -193,6 +199,13 @@ public:
     constexpr bool is_null() const noexcept;
 
     /**
+     * Cast to bool for logical expressions.
+     *
+     * @return  true if the key is not null.
+     */
+    [[nodiscard]] explicit constexpr operator bool () const noexcept;
+
+    /**
      * Return a hash of the key.
      *
      * @note  This hash function is constexpr, and since std::hash is not, the
@@ -236,13 +249,14 @@ private:
     static constexpr value_type make_mask() noexcept;
 
     // Bit masks for each field
-    static constexpr value_type index_mask = make_mask<IndexBits>();
-    static constexpr value_type version_mask = make_mask<VersionBits>();
-    static constexpr value_type user_mask = make_mask<UserBits>();
+    static constexpr value_type index_mask = make_mask<index_bits_value>();
+    static constexpr value_type version_mask = make_mask<version_bits_value>();
+    static constexpr value_type user_mask = make_mask<user_bits_value>();
 
     // Bit positions for each field (index starts at bit 0)
-    static constexpr unsigned version_shift = IndexBits;
-    static constexpr unsigned user_shift = IndexBits + VersionBits;
+    static constexpr unsigned version_shift = index_bits_value;
+    static constexpr unsigned user_shift = index_bits_value +
+        version_bits_value;
 
 
     // Helper to shift left safely (handles 0-bit or full-width shifts)
@@ -261,7 +275,7 @@ struct is_key
 : std::false_type
 { };
 
-template <typename T, unsigned I, unsigned V, unsigned U>
+template <typename T, IndexBits I, VersionBits V, UserBits U>
 struct is_key<Key<T, I, V, U>>
 : std::true_type
 { };
@@ -273,16 +287,11 @@ template <typename T>
 concept KeyC = is_key_v<T>;
 
 /**
- * The same as Key<T, IndexBits, VersionBits, UserBits>, except the Key class
+ * The same as Key<T, I, V, U>, except the Key class
  * will be trivially default constructible.
  */
-template <
-    typename T,
-    unsigned IndexBits,
-    unsigned VersionBits,
-    unsigned UserBits = 0>
-using TrivialKey =
-    slotmap::Key<detail::Trivial<T>, IndexBits, VersionBits, UserBits>;
+template <typename T, IndexBits I, VersionBits V, UserBits U = UserBits(0)>
+using TrivialKey = slotmap::Key<detail::Trivial<T>, I, V, U>;
 
 } // namespace wjh::slotmap
 
@@ -290,25 +299,28 @@ namespace wjh {
 
 template <
     typename T,
-    unsigned IndexBits,
-    unsigned VersionBits,
-    unsigned UserBits = 0>
-using SlotMapKey = slotmap::Key<T, IndexBits, VersionBits, UserBits>;
+    slotmap::IndexBits I,
+    slotmap::VersionBits V,
+    slotmap::UserBits U = slotmap::UserBits(0)>
+using SlotMapKey = slotmap::Key<T, I, V, U>;
 
 template <
     typename T,
-    unsigned IndexBits,
-    unsigned VersionBits,
-    unsigned UserBits = 0>
-using TrivialSlotMapKey =
-    slotmap::TrivialKey<T, IndexBits, VersionBits, UserBits>;
+    slotmap::IndexBits I,
+    slotmap::VersionBits V,
+    slotmap::UserBits U = slotmap::UserBits(0)>
+using TrivialSlotMapKey = slotmap::TrivialKey<T, I, V, U>;
 
 } // namespace wjh
 
 /**
  * Specialization of std::hash for wjh::slotmap::Key.
  */
-template <typename T, unsigned I, unsigned V, unsigned U>
+template <
+    typename T,
+    wjh::slotmap::IndexBits I,
+    wjh::slotmap::VersionBits V,
+    wjh::slotmap::UserBits U>
 struct std::hash<wjh::slotmap::Key<T, I, V, U>>
 {
     /**

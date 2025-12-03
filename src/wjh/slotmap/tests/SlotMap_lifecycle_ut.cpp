@@ -18,6 +18,7 @@
 
 namespace {
 using wjh::slotmap::Key;
+using namespace wjh::slotmap::literals;
 
 template <typename KeyT>
 class SlotMap
@@ -43,9 +44,9 @@ public:
 
 TEST_CASE("SlotMap: type aliases")
 {
-    using TestMap = SlotMap<Key<int, 16, 16>>;
+    using TestMap = SlotMap<Key<int, 16_ib, 16_vb>>;
 
-    static_assert(std::is_same_v<TestMap::key_type, Key<int, 16, 16>>);
+    static_assert(std::is_same_v<TestMap::key_type, Key<int, 16_ib, 16_vb>>);
     static_assert(std::is_same_v<TestMap::mapped_type, int>);
 
     // Index type should be able to hold IndexBits worth of values
@@ -62,21 +63,21 @@ TEST_CASE("SlotMap: type aliases")
 TEST_CASE("SlotMap: default construction")
 {
     SUBCASE("is empty after construction") {
-        using Size = SlotMap<Key<int, 16, 16>>::size_type;
-        SlotMap<Key<int, 16, 16>> map;
+        using Size = SlotMap<Key<int, 16_ib, 16_vb>>::size_type;
+        SlotMap<Key<int, 16_ib, 16_vb>> map;
 
         CHECK(map.is_empty());
         CHECK(map.size() == Size(0u));
     }
 
     SUBCASE("works with different key configurations") {
-        SlotMap<Key<int, 8, 8, 16>> map32;
+        SlotMap<Key<int, 8_ib, 8_vb, 16_ub>> map32;
         CHECK(map32.is_empty());
 
-        SlotMap<Key<int, 20, 20, 24>> map64;
+        SlotMap<Key<int, 20_ib, 20_vb, 24_ub>> map64;
         CHECK(map64.is_empty());
 
-        SlotMap<Key<std::string, 10, 10, 12>> map_string;
+        SlotMap<Key<std::string, 10_ib, 10_vb, 12_ub>> map_string;
         CHECK(map_string.is_empty());
     }
 }
@@ -84,22 +85,22 @@ TEST_CASE("SlotMap: default construction")
 TEST_CASE("SlotMap: explicit slab size construction")
 {
     SUBCASE("accepts power of 2 slab sizes") {
-        CHECK_NOTHROW(SlotMap<Key<int, 16, 16>>(1u));
-        CHECK_NOTHROW(SlotMap<Key<int, 16, 16>>(2u));
-        CHECK_NOTHROW(SlotMap<Key<int, 16, 16>>(4u));
-        CHECK_NOTHROW(SlotMap<Key<int, 16, 16>>(1024u));
-        CHECK_NOTHROW(SlotMap<Key<int, 16, 16>>(4096u));
+        CHECK_NOTHROW(SlotMap<Key<int, 16_ib, 16_vb>>(1u));
+        CHECK_NOTHROW(SlotMap<Key<int, 16_ib, 16_vb>>(2u));
+        CHECK_NOTHROW(SlotMap<Key<int, 16_ib, 16_vb>>(4u));
+        CHECK_NOTHROW(SlotMap<Key<int, 16_ib, 16_vb>>(1024u));
+        CHECK_NOTHROW(SlotMap<Key<int, 16_ib, 16_vb>>(4096u));
     }
 
     SUBCASE("rejects non-power of 2 slab sizes") {
-        using Map = SlotMap<Key<int, 16, 16>>;
+        using Map = SlotMap<Key<int, 16_ib, 16_vb>>;
         CHECK_THROWS_AS(Map(3u), std::invalid_argument);
         CHECK_THROWS_AS(Map(1000u), std::invalid_argument);
         CHECK_THROWS_AS(Map(1023u), std::invalid_argument);
     }
 
     SUBCASE("rejects zero slab size") {
-        using Map = SlotMap<Key<int, 16, 16>>;
+        using Map = SlotMap<Key<int, 16_ib, 16_vb>>;
         CHECK_THROWS_AS(Map(0u), std::invalid_argument);
     }
 
@@ -107,7 +108,7 @@ TEST_CASE("SlotMap: explicit slab size construction")
         // With 4 index bits, max_index = (1 << 4) - 1 = 15
         // So max usable slots is 15, and slab size must be <= 15
         // But slab size must be power of 2, so max is 8
-        using SmallMap = SlotMap<Key<int, 4, 4, 24>>;
+        using SmallMap = SlotMap<Key<int, 4_ib, 4_vb, 24_ub>>;
         using size_type = SmallMap::size_type;
         CHECK_NOTHROW(SmallMap(size_type{std::uint8_t(8)}));
 
@@ -121,13 +122,13 @@ TEST_CASE("SlotMap: explicit slab size construction")
 TEST_CASE("SlotMap: constants")
 {
     SUBCASE("end_of_free_list is one past 1 << numbits") {
-        using Map16 = SlotMap<Key<int, 16, 16>>;
+        using Map16 = SlotMap<Key<int, 16_ib, 16_vb>>;
         CHECK(Map16::end_of_free_list.value == 0x10000u); // 2^16
 
-        using Map8 = SlotMap<Key<int, 8, 8, 16>>;
+        using Map8 = SlotMap<Key<int, 8_ib, 8_vb, 16_ub>>;
         CHECK(Map8::end_of_free_list.value == 0x100u); // 2^8
 
-        using Map4 = SlotMap<Key<int, 4, 4, 24>>;
+        using Map4 = SlotMap<Key<int, 4_ib, 4_vb, 24_ub>>;
         CHECK(Map4::end_of_free_list.value == 0x10u); // 2^4
     }
 
@@ -135,7 +136,7 @@ TEST_CASE("SlotMap: constants")
         // Verify the design: end_of_free_list can be stored in size_type
         // but would overflow index_type
 
-        using Map16 = SlotMap<Key<int, 16, 16>>;
+        using Map16 = SlotMap<Key<int, 16_ib, 16_vb>>;
         static_assert(sizeof(Map16::size_type) * 8 >= 17); // Need 17 bits
         static_assert(sizeof(Map16::index_type) * 8 >= 16); // Only 16 bits
 
@@ -151,7 +152,7 @@ TEST_CASE("SlotMap: free list sentinel storage in Slot")
     //
     // The Slab's slot_type uses size_type (not index_type) for the next-link,
     // which allows storing end_of_free_list (one past max index).
-    using Map = SlotMap<Key<int, 8, 8, 16>>;
+    using Map = SlotMap<Key<int, 8_ib, 8_vb, 16_ub>>;
 
     // end_of_free_list = 256 (0x100), which doesn't fit in uint8_t (index_type)
     // but does fit in uint16_t (size_type)
@@ -180,7 +181,7 @@ TEST_CASE("SlotMap: free list sentinel storage in Slot")
 
 TEST_CASE("SlotMap: move construction")
 {
-    SlotMap<Key<int, 16, 16>> map;
+    SlotMap<Key<int, 16_ib, 16_vb>> map;
 
     SUBCASE("moved-from map is empty") {
         auto moved = std::move(map);
@@ -192,8 +193,8 @@ TEST_CASE("SlotMap: move construction")
 
 TEST_CASE("SlotMap: move assignment")
 {
-    SlotMap<Key<int, 16, 16>> map1;
-    SlotMap<Key<int, 16, 16>> map2;
+    SlotMap<Key<int, 16_ib, 16_vb>> map1;
+    SlotMap<Key<int, 16_ib, 16_vb>> map2;
 
     SUBCASE("move assignment leaves source empty") {
         map2 = std::move(map1);
@@ -210,8 +211,8 @@ TEST_CASE("SlotMap: move assignment")
 TEST_CASE("SlotMap: swap")
 {
     SUBCASE("swap empty maps") {
-        SlotMap<Key<int, 16, 16>> map1;
-        SlotMap<Key<int, 16, 16>> map2;
+        SlotMap<Key<int, 16_ib, 16_vb>> map1;
+        SlotMap<Key<int, 16_ib, 16_vb>> map2;
 
         map1.swap(map2);
 
@@ -220,8 +221,8 @@ TEST_CASE("SlotMap: swap")
     }
 
     SUBCASE("swap with one empty map") {
-        SlotMap<Key<int, 16, 16>> map1;
-        SlotMap<Key<int, 16, 16>> map2;
+        SlotMap<Key<int, 16_ib, 16_vb>> map1;
+        SlotMap<Key<int, 16_ib, 16_vb>> map2;
 
         auto key = map1.emplace(42);
         map1.swap(map2);
@@ -232,8 +233,8 @@ TEST_CASE("SlotMap: swap")
     }
 
     SUBCASE("swap with both non-empty") {
-        SlotMap<Key<int, 16, 16>> map1;
-        SlotMap<Key<int, 16, 16>> map2;
+        SlotMap<Key<int, 16_ib, 16_vb>> map1;
+        SlotMap<Key<int, 16_ib, 16_vb>> map2;
 
         auto key1 = map1.emplace(42);
         auto key2 = map2.emplace(100);
@@ -254,8 +255,8 @@ TEST_CASE("SlotMap: swap")
     }
 
     SUBCASE("swap with different slab sizes") {
-        SlotMap<Key<int, 16, 16>> map1(4u);
-        SlotMap<Key<int, 16, 16>> map2(8u);
+        SlotMap<Key<int, 16_ib, 16_vb>> map1(4u);
+        SlotMap<Key<int, 16_ib, 16_vb>> map2(8u);
 
         for (int i = 0; i < 10; ++i) {
             (void)map1.emplace(i);
@@ -271,7 +272,7 @@ TEST_CASE("SlotMap: swap")
     }
 
     SUBCASE("self-swap is safe") {
-        SlotMap<Key<int, 16, 16>> map;
+        SlotMap<Key<int, 16_ib, 16_vb>> map;
         auto key = map.emplace(42);
 
         map.swap(map);
@@ -288,17 +289,17 @@ TEST_CASE("SlotMap: swap")
 TEST_CASE("SlotMap: copy construction")
 {
     SUBCASE("copy empty map") {
-        SlotMap<Key<int, 16, 16>> original;
-        SlotMap<Key<int, 16, 16>> copy(original);
+        SlotMap<Key<int, 16_ib, 16_vb>> original;
+        SlotMap<Key<int, 16_ib, 16_vb>> copy(original);
 
         CHECK(copy.is_empty());
     }
 
     SUBCASE("copy single element") {
-        SlotMap<Key<int, 16, 16>> original;
+        SlotMap<Key<int, 16_ib, 16_vb>> original;
         auto key = original.emplace(42);
 
-        SlotMap<Key<int, 16, 16>> copy(original);
+        SlotMap<Key<int, 16_ib, 16_vb>> copy(original);
 
         CHECK(copy.size().value == 1);
         CHECK(copy.contains(key));
@@ -309,14 +310,14 @@ TEST_CASE("SlotMap: copy construction")
     }
 
     SUBCASE("copy multiple elements") {
-        SlotMap<Key<int, 16, 16>> original;
-        std::vector<Key<int, 16, 16>> keys;
+        SlotMap<Key<int, 16_ib, 16_vb>> original;
+        std::vector<Key<int, 16_ib, 16_vb>> keys;
 
         for (int i = 0; i < 100; ++i) {
             keys.push_back(original.emplace(i * 10));
         }
 
-        SlotMap<Key<int, 16, 16>> copy(original);
+        SlotMap<Key<int, 16_ib, 16_vb>> copy(original);
 
         CHECK(copy.size().value == 100);
 
@@ -330,7 +331,7 @@ TEST_CASE("SlotMap: copy construction")
     }
 
     SUBCASE("copy preserves versions") {
-        SlotMap<Key<int, 16, 16>> original(1u);
+        SlotMap<Key<int, 16_ib, 16_vb>> original(1u);
 
         // Create and erase to bump versions
         auto key1 = original.emplace(1);
@@ -339,17 +340,17 @@ TEST_CASE("SlotMap: copy construction")
 
         CHECK(key2.version().value > 1);
 
-        SlotMap<Key<int, 16, 16>> copy(original);
+        SlotMap<Key<int, 16_ib, 16_vb>> copy(original);
 
         CHECK(copy.contains(key2));
         CHECK(not copy.contains(key1)); // Old key should still be invalid
     }
 
     SUBCASE("copy is independent - modifying copy doesn't affect original") {
-        SlotMap<Key<int, 16, 16>> original;
+        SlotMap<Key<int, 16_ib, 16_vb>> original;
         auto key = original.emplace(42);
 
-        SlotMap<Key<int, 16, 16>> copy(original);
+        SlotMap<Key<int, 16_ib, 16_vb>> copy(original);
 
         // Modify copy
         copy.use(key, [](int & v) { v = 100; });
@@ -364,10 +365,10 @@ TEST_CASE("SlotMap: copy construction")
     }
 
     SUBCASE("copy is independent - modifying original doesn't affect copy") {
-        SlotMap<Key<int, 16, 16>> original;
+        SlotMap<Key<int, 16_ib, 16_vb>> original;
         auto key = original.emplace(42);
 
-        SlotMap<Key<int, 16, 16>> copy(original);
+        SlotMap<Key<int, 16_ib, 16_vb>> copy(original);
 
         // Modify original
         original.use(key, [](int & v) { v = 100; });
@@ -382,9 +383,9 @@ TEST_CASE("SlotMap: copy construction")
     }
 
     SUBCASE("copy with sparse data") {
-        SlotMap<Key<int, 16, 16>> original(4u);
+        SlotMap<Key<int, 16_ib, 16_vb>> original(4u);
 
-        std::vector<Key<int, 16, 16>> keys;
+        std::vector<Key<int, 16_ib, 16_vb>> keys;
         for (int i = 0; i < 10; ++i) {
             keys.push_back(original.emplace(i));
         }
@@ -394,7 +395,7 @@ TEST_CASE("SlotMap: copy construction")
             original.erase(keys[i]);
         }
 
-        SlotMap<Key<int, 16, 16>> copy(original);
+        SlotMap<Key<int, 16_ib, 16_vb>> copy(original);
 
         CHECK(copy.size().value == 5);
 
@@ -414,11 +415,11 @@ TEST_CASE("SlotMap: copy construction")
     }
 
     SUBCASE("copy with string values") {
-        SlotMap<Key<std::string, 16, 16>> original;
+        SlotMap<Key<std::string, 16_ib, 16_vb>> original;
         auto key1 = original.emplace("hello");
         auto key2 = original.emplace("world");
 
-        SlotMap<Key<std::string, 16, 16>> copy(original);
+        SlotMap<Key<std::string, 16_ib, 16_vb>> copy(original);
 
         CHECK(copy.size().value == 2);
 
@@ -438,8 +439,8 @@ TEST_CASE("SlotMap: copy construction")
 TEST_CASE("SlotMap: copy assignment")
 {
     SUBCASE("assign empty to empty") {
-        SlotMap<Key<int, 16, 16>> original;
-        SlotMap<Key<int, 16, 16>> target;
+        SlotMap<Key<int, 16_ib, 16_vb>> original;
+        SlotMap<Key<int, 16_ib, 16_vb>> target;
 
         target = original;
 
@@ -447,10 +448,10 @@ TEST_CASE("SlotMap: copy assignment")
     }
 
     SUBCASE("assign non-empty to empty") {
-        SlotMap<Key<int, 16, 16>> original;
+        SlotMap<Key<int, 16_ib, 16_vb>> original;
         auto key = original.emplace(42);
 
-        SlotMap<Key<int, 16, 16>> target;
+        SlotMap<Key<int, 16_ib, 16_vb>> target;
         target = original;
 
         CHECK(target.size().value == 1);
@@ -458,8 +459,8 @@ TEST_CASE("SlotMap: copy assignment")
     }
 
     SUBCASE("assign empty to non-empty") {
-        SlotMap<Key<int, 16, 16>> original;
-        SlotMap<Key<int, 16, 16>> target;
+        SlotMap<Key<int, 16_ib, 16_vb>> original;
+        SlotMap<Key<int, 16_ib, 16_vb>> target;
 
         auto key = target.emplace(42);
 
@@ -470,10 +471,10 @@ TEST_CASE("SlotMap: copy assignment")
     }
 
     SUBCASE("assign non-empty to non-empty") {
-        SlotMap<Key<int, 16, 16>> original;
+        SlotMap<Key<int, 16_ib, 16_vb>> original;
         auto key1 = original.emplace(100);
 
-        SlotMap<Key<int, 16, 16>> target;
+        SlotMap<Key<int, 16_ib, 16_vb>> target;
         // Add more elements to target so it has different structure
         (void)target.emplace(42);
         auto key3 = target.emplace(43);
@@ -495,7 +496,7 @@ TEST_CASE("SlotMap: copy assignment")
     }
 
     SUBCASE("self-assignment is safe") {
-        SlotMap<Key<int, 16, 16>> map;
+        SlotMap<Key<int, 16_ib, 16_vb>> map;
         auto key = map.emplace(42);
 
         // Use reference to defeat compiler self-assignment warning
@@ -522,8 +523,8 @@ TEST_CASE("SlotMap: copy assignment")
         destructor_count = 0;
 
         {
-            SlotMap<Key<Counter, 16, 16>> original;
-            SlotMap<Key<Counter, 16, 16>> target;
+            SlotMap<Key<Counter, 16_ib, 16_vb>> original;
+            SlotMap<Key<Counter, 16_ib, 16_vb>> target;
 
             (void)target.emplace();
             (void)target.emplace();
@@ -544,7 +545,7 @@ TEST_CASE("SlotMap: copy assignment")
 TEST_CASE("SlotMap: pop")
 {
     SUBCASE("pop returns value and removes element") {
-        SlotMap<Key<int, 16, 16>> map;
+        SlotMap<Key<int, 16_ib, 16_vb>> map;
         auto key = map.emplace(42);
 
         auto result = map.pop(key);
@@ -556,7 +557,7 @@ TEST_CASE("SlotMap: pop")
     }
 
     SUBCASE("pop returns nullopt for invalid key") {
-        SlotMap<Key<int, 16, 16>> map;
+        SlotMap<Key<int, 16_ib, 16_vb>> map;
         auto key = map.emplace(42);
         map.erase(key);
 
@@ -566,16 +567,16 @@ TEST_CASE("SlotMap: pop")
     }
 
     SUBCASE("pop returns nullopt for null key") {
-        SlotMap<Key<int, 16, 16>> map;
+        SlotMap<Key<int, 16_ib, 16_vb>> map;
         (void)map.emplace(42);
 
-        auto result = map.pop(Key<int, 16, 16>::null());
+        auto result = map.pop(Key<int, 16_ib, 16_vb>::null());
 
         CHECK(not result.has_value());
     }
 
     SUBCASE("pop moves value out") {
-        SlotMap<Key<std::string, 16, 16>> map;
+        SlotMap<Key<std::string, 16_ib, 16_vb>> map;
         auto key = map.emplace("hello world");
 
         auto result = map.pop(key);
@@ -586,7 +587,7 @@ TEST_CASE("SlotMap: pop")
     }
 
     SUBCASE("pop with move-only type") {
-        SlotMap<Key<std::unique_ptr<int>, 16, 16>> map;
+        SlotMap<Key<std::unique_ptr<int>, 16_ib, 16_vb>> map;
         auto key = map.emplace(std::make_unique<int>(42));
 
         auto result = map.pop(key);
@@ -597,7 +598,7 @@ TEST_CASE("SlotMap: pop")
     }
 
     SUBCASE("pop multiple elements") {
-        SlotMap<Key<int, 16, 16>> map;
+        SlotMap<Key<int, 16_ib, 16_vb>> map;
         auto key1 = map.emplace(1);
         auto key2 = map.try_emplace(2);
         auto key3 = map.emplace(3);
@@ -624,7 +625,7 @@ TEST_CASE("SlotMap: pop")
 
 TEST_CASE("SlotMap: reserve")
 {
-    using TestMap = SlotMap<Key<int, 16, 16>>;
+    using TestMap = SlotMap<Key<int, 16_ib, 16_vb>>;
 
     SUBCASE("reserve does not change size") {
         TestMap map;
@@ -643,7 +644,7 @@ TEST_CASE("SlotMap: reserve")
         // Emplace 16 elements - should not need new allocation
         for (int i = 0; i < 16; ++i) {
             auto key = map.emplace(i);
-            CHECK(key != Key<int, 16, 16>::null());
+            CHECK(key != Key<int, 16_ib, 16_vb>::null());
         }
 
         CHECK(map.size().value == 16);
@@ -651,7 +652,7 @@ TEST_CASE("SlotMap: reserve")
 
     SUBCASE("reserve more than index space") {
         // Use small index space (32-bit key: 8 index, 24 version)
-        using SmallMap = SlotMap<Key<int, 8, 24>>;
+        using SmallMap = SlotMap<Key<int, 8_ib, 24_vb>>;
         SmallMap map(4u);
 
         // Reserve more than can fit - should cap at max (256 slots)
@@ -662,12 +663,12 @@ TEST_CASE("SlotMap: reserve")
         // Can only fit 256 slots with 8-bit index
         for (int i = 0; i < 256; ++i) {
             auto key = map.emplace(i);
-            CHECK(key != Key<int, 8, 24>::null());
+            CHECK(key != Key<int, 8_ib, 24_vb>::null());
         }
 
         // 257th should return null key
         auto extra_key = map.try_emplace(999);
-        CHECK(extra_key == Key<int, 8, 24>::null());
+        CHECK(extra_key == Key<int, 8_ib, 24_vb>::null());
     }
 }
 

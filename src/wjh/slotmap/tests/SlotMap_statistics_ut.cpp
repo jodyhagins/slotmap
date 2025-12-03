@@ -21,6 +21,7 @@
 namespace {
 using wjh::slotmap::Key;
 using wjh::slotmap::test::validate_statistics;
+using namespace wjh::slotmap::literals;
 
 template <typename KeyT>
 class SlotMap
@@ -77,7 +78,7 @@ check_statistics_invariants(MapT const & map)
 
 TEST_CASE("SlotMap statistics: empty map")
 {
-    using K = Key<int, 16, 16>;
+    using K = Key<int, 16_ib, 16_vb>;
     SlotMap<K> map(64u);
 
     auto const stats = map.statistics();
@@ -124,7 +125,7 @@ TEST_CASE("SlotMap statistics: empty map")
 
 TEST_CASE("SlotMap statistics: after single emplace")
 {
-    using K = Key<int, 16, 16>;
+    using K = Key<int, 16_ib, 16_vb>;
     SlotMap<K> map(64u);
 
     (void)map.emplace(42);
@@ -142,7 +143,7 @@ TEST_CASE("SlotMap statistics: after single emplace")
 
 TEST_CASE("SlotMap statistics: after emplace and erase")
 {
-    using K = Key<int, 16, 16>;
+    using K = Key<int, 16_ib, 16_vb>;
     SlotMap<K> map(64u);
 
     auto key = map.emplace(42);
@@ -159,7 +160,7 @@ TEST_CASE("SlotMap statistics: after emplace and erase")
 
 TEST_CASE("SlotMap statistics: slot reuse tracking")
 {
-    using K = Key<int, 16, 16>;
+    using K = Key<int, 16_ib, 16_vb>;
     SlotMap<K> map(4u);
 
     // Create and destroy same slot multiple times
@@ -181,7 +182,8 @@ TEST_CASE("SlotMap statistics: version exhaustion creates dead slots")
     // 2-bit version means each slot can hold 4 objects before dying
     // (versions 0, 1, 2, 3 -> exhausted at version 4)
     // But slot 0 starts at version 1, so it only gets 3 objects
-    using K = Key<int, 8, 2, 22>; // 8 index, 2 version
+    using K = Key<int, 8_ib, 2_vb,
+                  22_ub>; // 8 index, 2 version
     SlotMap<K> map(4u);
 
     // Exhaust slot 0 (starts at version 1, so 3 cycles)
@@ -201,7 +203,7 @@ TEST_CASE("SlotMap statistics: version exhaustion creates dead slots")
 TEST_CASE("SlotMap statistics: max_objects calculation")
 {
     SUBCASE("32-bit key: 16 index, 16 version") {
-        using K = Key<int, 16, 16>;
+        using K = Key<int, 16_ib, 16_vb>;
         SlotMap<K> map;
         auto const stats = map.statistics();
 
@@ -210,7 +212,7 @@ TEST_CASE("SlotMap statistics: max_objects calculation")
     }
 
     SUBCASE("16-bit key: 8 index, 8 version") {
-        using K = Key<int, 8, 8>;
+        using K = Key<int, 8_ib, 8_vb>;
         SlotMap<K> map;
         auto const stats = map.statistics();
 
@@ -219,7 +221,7 @@ TEST_CASE("SlotMap statistics: max_objects calculation")
     }
 
     SUBCASE("small key: 4 index, 4 version") {
-        using K = Key<int, 4, 4, 24>;
+        using K = Key<int, 4_ib, 4_vb, 24_ub>;
         SlotMap<K> map;
         auto const stats = map.statistics();
 
@@ -230,7 +232,7 @@ TEST_CASE("SlotMap statistics: max_objects calculation")
 
 TEST_CASE("SlotMap statistics: memory tracking")
 {
-    using K = Key<int, 16, 16>;
+    using K = Key<int, 16_ib, 16_vb>;
     SlotMap<K> map(64u);
 
     auto const empty_stats = map.statistics();
@@ -247,7 +249,7 @@ TEST_CASE("SlotMap statistics: memory tracking")
 
 TEST_CASE("SlotMap statistics: copy preserves stats")
 {
-    using K = Key<int, 16, 16>;
+    using K = Key<int, 16_ib, 16_vb>;
     SlotMap<K> original(64u);
 
     for (int i = 0; i < 10; ++i) {
@@ -267,7 +269,7 @@ TEST_CASE("SlotMap statistics: copy preserves stats")
 
 TEST_CASE("SlotMap statistics: move transfers stats")
 {
-    using K = Key<int, 16, 16>;
+    using K = Key<int, 16_ib, 16_vb>;
     SlotMap<K> original(64u);
 
     for (int i = 0; i < 10; ++i) {
@@ -291,7 +293,7 @@ TEST_CASE("SlotMap statistics: move transfers stats")
 
 TEST_CASE("SlotMap statistics: clear preserves objects_created")
 {
-    using K = Key<int, 16, 16>;
+    using K = Key<int, 16_ib, 16_vb>;
     SlotMap<K> map(64u);
 
     for (int i = 0; i < 10; ++i) {
@@ -313,7 +315,7 @@ TEST_CASE("SlotMap statistics: clear preserves objects_created")
 
 TEST_CASE("SlotMap statistics: reset clears everything")
 {
-    using K = Key<int, 16, 16>;
+    using K = Key<int, 16_ib, 16_vb>;
     SlotMap<K> map(64u);
 
     for (int i = 0; i < 10; ++i) {
@@ -340,7 +342,7 @@ TEST_CASE(
     "SlotMap statistics: property-based invariants after random operations")
 {
     rc::check("invariants hold after random emplace/erase", []() {
-        using K = Key<int, 10, 6>;
+        using K = Key<int, 10_ib, 6_vb>;
         SlotMap<K> map(16u);
 
         auto const ops = *rc::gen::inRange<std::size_t>(0, 100);
@@ -372,7 +374,7 @@ TEST_CASE(
 TEST_CASE("SlotMap statistics: property-based objects_created tracking")
 {
     rc::check("objects_created equals total emplaces", []() {
-        using K = Key<int, 10, 6>;
+        using K = Key<int, 10_ib, 6_vb>;
         SlotMap<K> map(16u);
 
         auto const emplace_count = *rc::gen::inRange<std::size_t>(0, 200);
@@ -404,7 +406,7 @@ TEST_CASE("SlotMap statistics: property-based version exhaustion")
 {
     rc::check("dead slots tracked correctly during exhaustion", []() {
         // Small version bits to force exhaustion
-        using K = Key<int, 8, 2, 22>;
+        using K = Key<int, 8_ib, 2_vb, 22_ub>;
         SlotMap<K> map(4u);
 
         auto const cycles = *rc::gen::inRange<std::size_t>(1, 20);
@@ -428,7 +430,7 @@ TEST_CASE("SlotMap statistics: property-based version exhaustion")
 TEST_CASE("SlotMap statistics: property-based 16-bit key")
 {
     rc::check("16-bit key statistics invariants", []() {
-        using K = Key<int, 8, 6, 2>;
+        using K = Key<int, 8_ib, 6_vb, 2_ub>;
         SlotMap<K> map(8u);
 
         auto const ops = *rc::gen::inRange<std::size_t>(0, 50);

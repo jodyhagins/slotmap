@@ -16,7 +16,7 @@
 
 namespace wjh::slotmap {
 
-template <typename T, unsigned I, unsigned V, unsigned U>
+template <typename T, IndexBits I, VersionBits V, UserBits U>
 constexpr Key<T, I, V, U>::
 Key(index_type index, version_type version, user_type user) noexcept
 : Base(value_type(
@@ -25,13 +25,13 @@ Key(index_type index, version_type version, user_type user) noexcept
     safe_shift_left(user.value & user_mask, user_shift)))
 { }
 
-template <typename T, unsigned I, unsigned V, unsigned U>
+template <typename T, IndexBits I, VersionBits V, UserBits U>
 constexpr Key<T, I, V, U>::
 Key(index_type index, version_type version) noexcept
 : Key(index, version, user_type(0))
 { }
 
-template <typename T, unsigned I, unsigned V, unsigned U>
+template <typename T, IndexBits I, VersionBits V, UserBits U>
 constexpr Key<T, I, V, U>
 Key<T, I, V, U>::
 null() noexcept
@@ -39,7 +39,7 @@ null() noexcept
     return Key{};
 }
 
-template <typename T, unsigned I, unsigned V, unsigned U>
+template <typename T, IndexBits I, VersionBits V, UserBits U>
 constexpr typename Key<T, I, V, U>::index_type
 Key<T, I, V, U>::
 index() const noexcept
@@ -47,7 +47,7 @@ index() const noexcept
     return index_type{naked_index_type(Base::bits_ & index_mask)};
 }
 
-template <typename T, unsigned I, unsigned V, unsigned U>
+template <typename T, IndexBits I, VersionBits V, UserBits U>
 constexpr Key<T, I, V, U>::version_type
 Key<T, I, V, U>::
 version() const noexcept
@@ -56,7 +56,7 @@ version() const noexcept
         safe_shift_right(Base::bits_, version_shift) & version_mask)};
 }
 
-template <typename T, unsigned I, unsigned V, unsigned U>
+template <typename T, IndexBits I, VersionBits V, UserBits U>
 constexpr Key<T, I, V, U>::user_type
 Key<T, I, V, U>::
 user() const noexcept
@@ -65,7 +65,7 @@ user() const noexcept
         naked_user_type(safe_shift_right(Base::bits_, user_shift) & user_mask)};
 }
 
-template <typename T, unsigned I, unsigned V, unsigned U>
+template <typename T, IndexBits I, VersionBits V, UserBits U>
 constexpr Key<T, I, V, U>::value_type
 Key<T, I, V, U>::
 to_underlying() const noexcept
@@ -73,7 +73,7 @@ to_underlying() const noexcept
     return Base::bits_;
 }
 
-template <typename T, unsigned I, unsigned V, unsigned U>
+template <typename T, IndexBits I, VersionBits V, UserBits U>
 constexpr Key<T, I, V, U>
 Key<T, I, V, U>::
 with_user(user_type new_user) const noexcept
@@ -88,7 +88,7 @@ with_user(user_type new_user) const noexcept
     return result;
 }
 
-template <typename T, unsigned I, unsigned V, unsigned U>
+template <typename T, IndexBits I, VersionBits V, UserBits U>
 constexpr bool
 Key<T, I, V, U>::
 is_null() const noexcept
@@ -96,7 +96,14 @@ is_null() const noexcept
     return Base::bits_ == value_type{0};
 }
 
-template <typename T, unsigned I, unsigned V, unsigned U>
+template <typename T, IndexBits I, VersionBits V, UserBits U>
+constexpr Key<T, I, V, U>::
+operator bool () const noexcept
+{
+    return not is_null();
+}
+
+template <typename T, IndexBits I, VersionBits V, UserBits U>
 constexpr std::size_t
 Key<T, I, V, U>::
 hash() const noexcept
@@ -104,7 +111,7 @@ hash() const noexcept
     return detail::hash_bits(Base::bits_);
 }
 
-template <typename T, unsigned I, unsigned V, unsigned U>
+template <typename T, IndexBits I, VersionBits V, UserBits U>
 template <unsigned Bits>
 constexpr Key<T, I, V, U>::value_type
 Key<T, I, V, U>::
@@ -113,11 +120,12 @@ make_mask() noexcept
     if constexpr (Bits == 0) {
         return value_type{0};
     } else {
+        static_assert(Bits < std::numeric_limits<value_type>::digits);
         return (value_type{1} << Bits) - value_type{1};
     }
 }
 
-template <typename T, unsigned I, unsigned V, unsigned U>
+template <typename T, IndexBits I, VersionBits V, UserBits U>
 constexpr Key<T, I, V, U>::value_type
 Key<T, I, V, U>::
 safe_shift_left(value_type val, unsigned shift) noexcept
@@ -128,7 +136,7 @@ safe_shift_left(value_type val, unsigned shift) noexcept
     return value_type(val << shift);
 }
 
-template <typename T, unsigned I, unsigned V, unsigned U>
+template <typename T, IndexBits I, VersionBits V, UserBits U>
 constexpr Key<T, I, V, U>::value_type
 Key<T, I, V, U>::
 safe_shift_right(value_type val, unsigned shift) noexcept
@@ -141,7 +149,11 @@ safe_shift_right(value_type val, unsigned shift) noexcept
 
 } // namespace wjh::slotmap
 
-template <typename T, unsigned I, unsigned V, unsigned U>
+template <
+    typename T,
+    wjh::slotmap::IndexBits I,
+    wjh::slotmap::VersionBits V,
+    wjh::slotmap::UserBits U>
 std::size_t
 std::
 hash<wjh::slotmap::Key<T, I, V, U>>::

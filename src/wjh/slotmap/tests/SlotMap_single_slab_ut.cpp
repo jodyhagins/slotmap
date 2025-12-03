@@ -26,21 +26,22 @@ using wjh::slotmap::SlotsPerSlab;
 using wjh::slotmap::Traits;
 using wjh::slotmap::UseAliveBitForLookup;
 using wjh::slotmap::test::validate_statistics;
+using namespace wjh::slotmap::literals;
 
 // Single-slab SlotMap with 8-bit index (256 slots max) - 32 bits total
-using SmallKey = Key<int, 8, 8>;
+using SmallKey = Key<int, 8_ib, 8_vb>;
 using SmallTraits =
     Traits<SmallKey, SlotsPerSlab::All, UseAliveBitForLookup::Yes>;
 using SmallSlotMap = wjh::slotmap::SlotMap<SmallTraits>;
 
 // Single-slab SlotMap with 16-bit index (64K slots max) - explicitly use All
-using MediumKey = Key<int, 16, 16>;
+using MediumKey = Key<int, 16_ib, 16_vb>;
 using MediumTraits =
     Traits<MediumKey, SlotsPerSlab::All, UseAliveBitForLookup::Yes>;
 using MediumSlotMap = wjh::slotmap::SlotMap<MediumTraits>;
 
 // Multi-slab SlotMap (default) for comparison
-using DefaultKey = Key<int, 16, 16>;
+using DefaultKey = Key<int, 16_ib, 16_vb>;
 using DefaultSlotMap = wjh::slotmap::SlotMap<DefaultKey>;
 
 // ============================================================================
@@ -464,7 +465,7 @@ struct LargeValue
     std::uint64_t data;
 };
 
-using LargeIndexKey = Key<LargeValue, 18, 14>;
+using LargeIndexKey = Key<LargeValue, 18_ib, 14_vb>;
 using LargeIndexTraits =
     Traits<LargeIndexKey, SlotsPerSlab::All, UseAliveBitForLookup::Yes>;
 using LargeIndexSlotMap = wjh::slotmap::SlotMap<LargeIndexTraits>;
@@ -521,7 +522,7 @@ TEST_CASE("Single-slab SlotMap: can fill entire large index space")
     // 16-bit index = 65536 slots, which with 16-byte values is ~1MB
     // but we want to verify the full capacity works
 
-    using MediumLargeKey = Key<LargeValue, 16, 16>;
+    using MediumLargeKey = Key<LargeValue, 16_ib, 16_vb>;
     using MediumLargeTraits =
         Traits<MediumLargeKey, SlotsPerSlab::All, UseAliveBitForLookup::Yes>;
     using MediumLargeSlotMap = wjh::slotmap::SlotMap<MediumLargeTraits>;

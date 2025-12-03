@@ -21,6 +21,7 @@ namespace {
 using wjh::slotmap::Key;
 using wjh::slotmap::Options;
 using wjh::slotmap::test::validate_statistics;
+using namespace wjh::slotmap::literals;
 
 template <typename KeyT>
 class SlotMap
@@ -46,7 +47,7 @@ public:
 
 TEST_CASE("for_each basic iteration")
 {
-    SlotMap<Key<int, 16, 16>> map;
+    SlotMap<Key<int, 16_ib, 16_vb>> map;
 
     SUBCASE("empty map") {
         std::size_t count = 0;
@@ -59,7 +60,7 @@ TEST_CASE("for_each basic iteration")
         auto key = map.emplace(42);
         std::size_t count = 0;
         int found = 0;
-        Key<int, 16, 16> found_key;
+        Key<int, 16_ib, 16_vb> found_key;
 
         map.for_each([&](auto k, int const & v) {
             ++count;
@@ -73,7 +74,7 @@ TEST_CASE("for_each basic iteration")
     }
 
     SUBCASE("multiple elements") {
-        std::vector<Key<int, 16, 16>> keys;
+        std::vector<Key<int, 16_ib, 16_vb>> keys;
         for (int i = 0; i < 10; ++i) {
             keys.push_back(map.emplace(i * 10));
         }
@@ -92,7 +93,7 @@ TEST_CASE("for_each basic iteration")
 
 TEST_CASE("for_each early exit")
 {
-    SlotMap<Key<int, 16, 16>> map;
+    SlotMap<Key<int, 16_ib, 16_vb>> map;
 
     for (int i = 0; i < 100; ++i) {
         (void)map.emplace(i);
@@ -125,7 +126,7 @@ TEST_CASE("for_each early exit")
 
 TEST_CASE("for_each early exit via bool return")
 {
-    SlotMap<Key<int, 16, 16>> map;
+    SlotMap<Key<int, 16_ib, 16_vb>> map;
 
     for (int i = 0; i < 100; ++i) {
         (void)map.emplace(i);
@@ -238,7 +239,7 @@ TEST_CASE("for_each early exit via bool return")
 
 TEST_CASE("for_each with const map")
 {
-    SlotMap<Key<int, 16, 16>> map;
+    SlotMap<Key<int, 16_ib, 16_vb>> map;
     (void)map.emplace(42);
     (void)map.emplace(100);
 
@@ -254,7 +255,7 @@ TEST_CASE("for_each with const map")
 
 TEST_CASE("for_each modification through non-const")
 {
-    SlotMap<Key<int, 16, 16>> map;
+    SlotMap<Key<int, 16_ib, 16_vb>> map;
     auto key1 = map.emplace(10);
     auto key2 = map.emplace(20);
 
@@ -270,13 +271,13 @@ TEST_CASE("for_each modification through non-const")
 
 TEST_CASE("for_each returns valid keys")
 {
-    SlotMap<Key<int, 16, 16>> map;
-    std::vector<Key<int, 16, 16>> original_keys;
+    SlotMap<Key<int, 16_ib, 16_vb>> map;
+    std::vector<Key<int, 16_ib, 16_vb>> original_keys;
     for (int i = 0; i < 10; ++i) {
         original_keys.push_back(map.emplace(i));
     }
 
-    std::vector<Key<int, 16, 16>> iterated_keys;
+    std::vector<Key<int, 16_ib, 16_vb>> iterated_keys;
     map.for_each([&](auto key, int const &) { iterated_keys.push_back(key); });
 
     // All iterated keys should be valid
@@ -285,10 +286,10 @@ TEST_CASE("for_each returns valid keys")
     }
 
     // All iterated keys should match original keys
-    std::set<Key<int, 16, 16>> original_set(
+    std::set<Key<int, 16_ib, 16_vb>> original_set(
         original_keys.begin(),
         original_keys.end());
-    std::set<Key<int, 16, 16>> iterated_set(
+    std::set<Key<int, 16_ib, 16_vb>> iterated_set(
         iterated_keys.begin(),
         iterated_keys.end());
     CHECK(original_set == iterated_set);
@@ -297,9 +298,9 @@ TEST_CASE("for_each returns valid keys")
 TEST_CASE("for_each with sparse data")
 {
     // Create slots then erase some to create gaps
-    SlotMap<Key<int, 16, 16>> map(4u); // Small slab for testing
+    SlotMap<Key<int, 16_ib, 16_vb>> map(4u); // Small slab for testing
 
-    std::vector<Key<int, 16, 16>> keys;
+    std::vector<Key<int, 16_ib, 16_vb>> keys;
     for (int i = 0; i < 10; ++i) {
         keys.push_back(map.emplace(i));
     }
@@ -324,7 +325,7 @@ TEST_CASE("for_each with sparse data")
 
 TEST_CASE("for_each with erase option")
 {
-    SlotMap<Key<int, 16, 16>> map(4u);
+    SlotMap<Key<int, 16_ib, 16_vb>> map(4u);
 
     SUBCASE("erase all elements") {
         for (int i = 0; i < 10; ++i) {
@@ -340,7 +341,7 @@ TEST_CASE("for_each with erase option")
     }
 
     SUBCASE("erase elements matching predicate") {
-        std::vector<Key<int, 16, 16>> keys;
+        std::vector<Key<int, 16_ib, 16_vb>> keys;
         for (int i = 0; i < 10; ++i) {
             keys.push_back(map.emplace(i));
         }
@@ -365,7 +366,7 @@ TEST_CASE("for_each with erase option")
     }
 
     SUBCASE("erase single element") {
-        std::vector<Key<int, 16, 16>> keys;
+        std::vector<Key<int, 16_ib, 16_vb>> keys;
         for (int i = 0; i < 5; ++i) {
             keys.push_back(map.emplace(i));
         }
@@ -386,13 +387,13 @@ TEST_CASE("for_each with erase option")
     }
 
     SUBCASE("erase with key access") {
-        std::vector<Key<int, 16, 16>> keys;
+        std::vector<Key<int, 16_ib, 16_vb>> keys;
         for (int i = 0; i < 5; ++i) {
             keys.push_back(map.emplace(i * 10));
         }
 
-        Key<int, 16, 16> target_key = keys[2];
-        std::set<Key<int, 16, 16>> erased_keys;
+        Key<int, 16_ib, 16_vb> target_key = keys[2];
+        std::set<Key<int, 16_ib, 16_vb>> erased_keys;
 
         // Erase element with specific key
         map.for_each([&](auto key, int const &, Options & opts) {
@@ -444,7 +445,7 @@ TEST_CASE("for_each with erase option")
         destructor_sum = 0;
 
         {
-            SlotMap<Key<Value, 16, 16>> vmap;
+            SlotMap<Key<Value, 16_ib, 16_vb>> vmap;
             (void)vmap.emplace(1);
             (void)vmap.emplace(2);
             (void)vmap.emplace(3);
@@ -465,10 +466,10 @@ TEST_CASE("for_each with erase option")
 
 TEST_CASE("for_each erase across multiple slabs")
 {
-    SlotMap<Key<int, 16, 16>> map(4u); // 4 slots per slab
+    SlotMap<Key<int, 16_ib, 16_vb>> map(4u); // 4 slots per slab
 
     // Create 16 elements across 4 slabs
-    std::vector<Key<int, 16, 16>> keys;
+    std::vector<Key<int, 16_ib, 16_vb>> keys;
     for (int i = 0; i < 16; ++i) {
         keys.push_back(map.emplace(i));
     }
@@ -498,7 +499,7 @@ TEST_CASE("for_each erase across multiple slabs")
 
 TEST_CASE("clear basic")
 {
-    SlotMap<Key<int, 16, 16>> map;
+    SlotMap<Key<int, 16_ib, 16_vb>> map;
 
     SUBCASE("clear empty map") {
         map.clear();
@@ -516,7 +517,7 @@ TEST_CASE("clear basic")
     }
 
     SUBCASE("clear multiple elements") {
-        std::vector<Key<int, 16, 16>> keys;
+        std::vector<Key<int, 16_ib, 16_vb>> keys;
         for (int i = 0; i < 100; ++i) {
             keys.push_back(map.emplace(i));
         }
@@ -534,7 +535,7 @@ TEST_CASE("clear basic")
 
 TEST_CASE("clear invalidates keys")
 {
-    SlotMap<Key<int, 16, 16>> map;
+    SlotMap<Key<int, 16_ib, 16_vb>> map;
     auto key1 = map.emplace(42);
     auto key2 = map.emplace(100);
 
@@ -553,7 +554,7 @@ TEST_CASE("clear invalidates keys")
 
 TEST_CASE("clear allows slot reuse")
 {
-    SlotMap<Key<int, 16, 16>> map(1u); // Single slot slab
+    SlotMap<Key<int, 16_ib, 16_vb>> map(1u); // Single slot slab
 
     auto key1 = map.emplace(1);
     auto idx1 = key1.index();
@@ -583,7 +584,7 @@ TEST_CASE("clear destroys values")
     destructor_count = 0;
 
     {
-        SlotMap<Key<Counter, 16, 16>> map;
+        SlotMap<Key<Counter, 16_ib, 16_vb>> map;
         (void)map.emplace();
         (void)map.emplace();
         (void)map.emplace();
@@ -598,9 +599,9 @@ TEST_CASE("clear destroys values")
 
 TEST_CASE("clear with partial erases")
 {
-    SlotMap<Key<int, 16, 16>> map(4u);
+    SlotMap<Key<int, 16_ib, 16_vb>> map(4u);
 
-    std::vector<Key<int, 16, 16>> keys;
+    std::vector<Key<int, 16_ib, 16_vb>> keys;
     for (int i = 0; i < 10; ++i) {
         keys.push_back(map.emplace(i));
     }
@@ -628,7 +629,7 @@ TEST_CASE("clear with partial erases")
 
 TEST_CASE("reset basic")
 {
-    SlotMap<Key<int, 16, 16>> map;
+    SlotMap<Key<int, 16_ib, 16_vb>> map;
 
     SUBCASE("reset empty map") {
         map.reset();
@@ -660,7 +661,7 @@ TEST_CASE("reset destroys values")
     destructor_count = 0;
 
     {
-        SlotMap<Key<Counter, 16, 16>> map;
+        SlotMap<Key<Counter, 16_ib, 16_vb>> map;
         (void)map.emplace();
         (void)map.emplace();
         (void)map.emplace();
@@ -675,7 +676,7 @@ TEST_CASE("reset destroys values")
 
 TEST_CASE("reset vs clear behavior")
 {
-    SlotMap<Key<int, 16, 16>> map;
+    SlotMap<Key<int, 16_ib, 16_vb>> map;
 
     (void)map.emplace(42);
 
@@ -696,17 +697,17 @@ TEST_CASE("reset vs clear behavior")
 TEST_CASE("property-based for_each visits all elements")
 {
     rc::check("for_each visits exactly size() elements", []() {
-        SlotMap<Key<int, 16, 15, 1>> map;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map;
         auto const count = *rc::gen::inRange<std::size_t>(0, 100);
 
-        std::map<Key<int, 16, 15, 1>, int> reference;
+        std::map<Key<int, 16_ib, 15_vb, 1_ub>, int> reference;
         for (std::size_t i = 0; i < count; ++i) {
             auto value = *rc::gen::arbitrary<int>();
             auto key = map.emplace(value);
             reference[key] = value;
         }
 
-        std::map<Key<int, 16, 15, 1>, int> visited;
+        std::map<Key<int, 16_ib, 15_vb, 1_ub>, int> visited;
         auto num_visited = map.for_each(
             [&](auto key, int const & v) { visited[key] = v; });
 
@@ -718,10 +719,10 @@ TEST_CASE("property-based for_each visits all elements")
 TEST_CASE("property-based clear invalidates all keys")
 {
     rc::check("clear invalidates all keys", []() {
-        SlotMap<Key<int, 16, 15, 1>> map;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map;
         auto const count = *rc::gen::inRange<std::size_t>(1, 50);
 
-        std::vector<Key<int, 16, 15, 1>> keys;
+        std::vector<Key<int, 16_ib, 15_vb, 1_ub>> keys;
         for (std::size_t i = 0; i < count; ++i) {
             keys.push_back(map.emplace(*rc::gen::arbitrary<int>()));
         }
@@ -740,7 +741,7 @@ TEST_CASE("property-based clear invalidates all keys")
 TEST_CASE("property-based reset returns to initial state")
 {
     rc::check("reset returns to initial state", []() {
-        SlotMap<Key<int, 16, 15, 1>> map;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map;
         auto const count = *rc::gen::inRange<std::size_t>(1, 50);
 
         for (std::size_t i = 0; i < count; ++i) {
@@ -764,9 +765,9 @@ TEST_CASE("property-based reset returns to initial state")
 TEST_CASE("property-based for_each with sparse map")
 {
     rc::check("for_each works with sparse maps", []() {
-        SlotMap<Key<int, 16, 15, 1>> map;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map;
 
-        std::map<Key<int, 16, 15, 1>, int> reference;
+        std::map<Key<int, 16_ib, 15_vb, 1_ub>, int> reference;
         auto const insert_count = *rc::gen::inRange<std::size_t>(10, 50);
 
         for (std::size_t i = 0; i < insert_count; ++i) {
@@ -788,7 +789,7 @@ TEST_CASE("property-based for_each with sparse map")
             reference.erase(it);
         }
 
-        std::map<Key<int, 16, 15, 1>, int> visited;
+        std::map<Key<int, 16_ib, 15_vb, 1_ub>, int> visited;
         map.for_each([&](auto key, int const & v) { visited[key] = v; });
 
         RC_ASSERT(visited == reference);
@@ -798,8 +799,8 @@ TEST_CASE("property-based for_each with sparse map")
 TEST_CASE("property-based for_each erase by predicate")
 {
     rc::check("for_each erase removes matching elements", []() {
-        SlotMap<Key<int, 16, 15, 1>> map;
-        std::map<Key<int, 16, 15, 1>, int> reference;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map;
+        std::map<Key<int, 16_ib, 15_vb, 1_ub>, int> reference;
 
         auto const count = *rc::gen::inRange<std::size_t>(1, 100);
 
@@ -828,7 +829,7 @@ TEST_CASE("property-based for_each erase by predicate")
         RC_ASSERT(map.size().value == reference.size());
 
         // Verify remaining elements match
-        std::map<Key<int, 16, 15, 1>, int> remaining;
+        std::map<Key<int, 16_ib, 15_vb, 1_ub>, int> remaining;
         map.for_each([&](auto key, int const & v) { remaining[key] = v; });
         RC_ASSERT(remaining == reference);
     });
@@ -837,8 +838,8 @@ TEST_CASE("property-based for_each erase by predicate")
 TEST_CASE("property-based for_each erase equivalence with manual erase")
 {
     rc::check("for_each erase equivalent to collecting and erasing", []() {
-        SlotMap<Key<int, 16, 15, 1>> map1;
-        SlotMap<Key<int, 16, 15, 1>> map2;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map1;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map2;
 
         auto const count = *rc::gen::inRange<std::size_t>(1, 50);
 
@@ -860,7 +861,7 @@ TEST_CASE("property-based for_each erase equivalence with manual erase")
         });
 
         // map2: collect keys then erase manually
-        std::vector<Key<int, 16, 15, 1>> keys_to_erase;
+        std::vector<Key<int, 16_ib, 15_vb, 1_ub>> keys_to_erase;
         map2.for_each([&, threshold](auto key, int const & v) {
             if (v < threshold) {
                 keys_to_erase.push_back(key);
@@ -874,7 +875,7 @@ TEST_CASE("property-based for_each erase equivalence with manual erase")
         RC_ASSERT(map1.size().value == map2.size().value);
 
         // Both should contain the same elements
-        std::map<Key<int, 16, 15, 1>, int> data1, data2;
+        std::map<Key<int, 16_ib, 15_vb, 1_ub>, int> data1, data2;
         map1.for_each([&](auto key, int const & v) { data1[key] = v; });
         map2.for_each([&](auto key, int const & v) { data2[key] = v; });
         RC_ASSERT(data1 == data2);
@@ -888,10 +889,10 @@ TEST_CASE("property-based for_each erase equivalence with manual erase")
 TEST_CASE("property-based swap preserves data")
 {
     rc::check("swap preserves all data in both maps", []() {
-        SlotMap<Key<int, 16, 15, 1>> map1;
-        SlotMap<Key<int, 16, 15, 1>> map2;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map1;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map2;
 
-        std::map<Key<int, 16, 15, 1>, int> ref1, ref2;
+        std::map<Key<int, 16_ib, 15_vb, 1_ub>, int> ref1, ref2;
 
         auto const count1 = *rc::gen::inRange<std::size_t>(0, 50);
         auto const count2 = *rc::gen::inRange<std::size_t>(0, 50);
@@ -931,8 +932,8 @@ TEST_CASE("property-based swap preserves data")
 TEST_CASE("property-based copy creates exact duplicate")
 {
     rc::check("copy constructor creates exact duplicate", []() {
-        SlotMap<Key<int, 16, 15, 1>> original;
-        std::map<Key<int, 16, 15, 1>, int> reference;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> original;
+        std::map<Key<int, 16_ib, 15_vb, 1_ub>, int> reference;
 
         auto const count = *rc::gen::inRange<std::size_t>(0, 100);
 
@@ -942,7 +943,7 @@ TEST_CASE("property-based copy creates exact duplicate")
             reference[key] = value;
         }
 
-        SlotMap<Key<int, 16, 15, 1>> copy(original);
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> copy(original);
 
         // Verify copy has same size
         RC_ASSERT(copy.size().value == reference.size());
@@ -959,8 +960,8 @@ TEST_CASE("property-based copy creates exact duplicate")
 TEST_CASE("property-based copy independence")
 {
     rc::check("copy is independent from original", []() {
-        SlotMap<Key<int, 16, 15, 1>> original;
-        std::map<Key<int, 16, 15, 1>, int> original_ref;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> original;
+        std::map<Key<int, 16_ib, 15_vb, 1_ub>, int> original_ref;
 
         auto const count = *rc::gen::inRange<std::size_t>(1, 50);
 
@@ -970,13 +971,13 @@ TEST_CASE("property-based copy independence")
             original_ref[key] = value;
         }
 
-        SlotMap<Key<int, 16, 15, 1>> copy(original);
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> copy(original);
 
         // Modify copy: erase some and add some
         auto const erase_count = *rc::gen::inRange<std::size_t>(
             0,
             original_ref.size());
-        std::vector<Key<int, 16, 15, 1>> keys_to_erase;
+        std::vector<Key<int, 16_ib, 15_vb, 1_ub>> keys_to_erase;
         for (auto const & [key, _] : original_ref) {
             if (keys_to_erase.size() < erase_count) {
                 keys_to_erase.push_back(key);
@@ -1004,10 +1005,10 @@ TEST_CASE("property-based copy independence")
 TEST_CASE("property-based copy assignment")
 {
     rc::check("copy assignment replaces contents", []() {
-        SlotMap<Key<int, 16, 15, 1>> source;
-        SlotMap<Key<int, 16, 15, 1>> target;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> source;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> target;
 
-        std::map<Key<int, 16, 15, 1>, int> source_ref;
+        std::map<Key<int, 16_ib, 15_vb, 1_ub>, int> source_ref;
 
         auto const source_count = *rc::gen::inRange<std::size_t>(0, 50);
         auto const target_count = *rc::gen::inRange<std::size_t>(0, 50);
@@ -1044,8 +1045,8 @@ TEST_CASE("property-based copy assignment")
 TEST_CASE("property-based pop returns correct values")
 {
     rc::check("pop returns the correct value", []() {
-        SlotMap<Key<int, 16, 15, 1>> map;
-        std::map<Key<int, 16, 15, 1>, int> reference;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map;
+        std::map<Key<int, 16_ib, 15_vb, 1_ub>, int> reference;
 
         auto const count = *rc::gen::inRange<std::size_t>(1, 50);
 
@@ -1057,7 +1058,7 @@ TEST_CASE("property-based pop returns correct values")
 
         // Pop random elements
         auto const pop_count = *rc::gen::inRange<std::size_t>(1, count + 1);
-        std::vector<Key<int, 16, 15, 1>> keys_to_pop;
+        std::vector<Key<int, 16_ib, 15_vb, 1_ub>> keys_to_pop;
         for (auto const & [key, _] : reference) {
             if (keys_to_pop.size() < pop_count) {
                 keys_to_pop.push_back(key);
@@ -1085,11 +1086,11 @@ TEST_CASE("property-based pop returns correct values")
 TEST_CASE("property-based pop vs erase equivalence")
 {
     rc::check("pop and erase have same effect on map state", []() {
-        SlotMap<Key<int, 16, 15, 1>> map1;
-        SlotMap<Key<int, 16, 15, 1>> map2;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map1;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map2;
 
         auto const count = *rc::gen::inRange<std::size_t>(1, 30);
-        std::vector<Key<int, 16, 15, 1>> keys;
+        std::vector<Key<int, 16_ib, 15_vb, 1_ub>> keys;
 
         // Build identical maps
         for (std::size_t i = 0; i < count; ++i) {
@@ -1125,7 +1126,7 @@ TEST_CASE("property-based pop vs erase equivalence")
 TEST_CASE("property-based for_each bool return early exit")
 {
     rc::check("bool return stops at correct count", []() {
-        SlotMap<Key<int, 16, 15, 1>> map;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map;
         auto const count = *rc::gen::inRange<std::size_t>(10, 100);
 
         for (std::size_t i = 0; i < count; ++i) {
@@ -1148,8 +1149,8 @@ TEST_CASE("property-based for_each bool return early exit")
 TEST_CASE("property-based for_each bool return equivalence with Options.stop")
 {
     rc::check("bool return equivalent to Options.stop", []() {
-        SlotMap<Key<int, 16, 15, 1>> map1;
-        SlotMap<Key<int, 16, 15, 1>> map2;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map1;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map2;
 
         auto const count = *rc::gen::inRange<std::size_t>(10, 50);
 
@@ -1192,7 +1193,7 @@ TEST_CASE("property-based for_each bool return equivalence with Options.stop")
 TEST_CASE("property-based for_each bool return with erase")
 {
     rc::check("bool return with erase removes correct elements", []() {
-        SlotMap<Key<int, 16, 15, 1>> map;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map;
 
         auto const count = *rc::gen::inRange<std::size_t>(10, 50);
 
@@ -1218,8 +1219,8 @@ TEST_CASE("property-based for_each bool return with erase")
 TEST_CASE("property-based for_each bool return true visits all")
 {
     rc::check("returning true visits all elements", []() {
-        SlotMap<Key<int, 16, 15, 1>> map;
-        std::map<Key<int, 16, 15, 1>, int> reference;
+        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map;
+        std::map<Key<int, 16_ib, 15_vb, 1_ub>, int> reference;
 
         auto const count = *rc::gen::inRange<std::size_t>(0, 100);
 
@@ -1229,7 +1230,7 @@ TEST_CASE("property-based for_each bool return true visits all")
             reference[key] = value;
         }
 
-        std::map<Key<int, 16, 15, 1>, int> visited;
+        std::map<Key<int, 16_ib, 15_vb, 1_ub>, int> visited;
         auto result = map.for_each([&](auto key, int const & v) {
             visited[key] = v;
             return true;

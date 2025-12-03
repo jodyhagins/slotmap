@@ -10,22 +10,22 @@
 namespace wjh::slotmap {
 
 template <typename TraitsT>
-SlotMap<TraitsT>::
-SlotMap()
+BasicSlotMap<TraitsT>::
+BasicSlotMap()
 requires traits_type::is_single_slab
 : slots_per_slab_{end_of_free_list}
 { }
 
 template <typename TraitsT>
-SlotMap<TraitsT>::
-SlotMap()
+BasicSlotMap<TraitsT>::
+BasicSlotMap()
 requires(not traits_type::is_single_slab)
-: SlotMap(compute_default_slab_size())
+: BasicSlotMap(compute_default_slab_size())
 { }
 
 template <typename TraitsT>
-SlotMap<TraitsT>::
-SlotMap(size_type slots_per_slab)
+BasicSlotMap<TraitsT>::
+BasicSlotMap(size_type slots_per_slab)
 requires(not traits_type::is_single_slab)
 : traits_type(slots_per_slab)
 , slots_per_slab_{slots_per_slab}
@@ -34,8 +34,8 @@ requires(not traits_type::is_single_slab)
 }
 
 template <typename TraitsT>
-SlotMap<TraitsT>::
-SlotMap(SlotMap const & other)
+BasicSlotMap<TraitsT>::
+BasicSlotMap(BasicSlotMap const & other)
 requires std::is_copy_constructible_v<mapped_type>
 : traits_type{static_cast<traits_type const &>(other)}
 , free_list_head_{other.free_list_head_}
@@ -49,22 +49,22 @@ requires std::is_copy_constructible_v<mapped_type>
 }
 
 template <typename TraitsT>
-SlotMap<TraitsT> &
-SlotMap<TraitsT>::
-operator = (SlotMap const & other)
+BasicSlotMap<TraitsT> &
+BasicSlotMap<TraitsT>::
+operator = (BasicSlotMap const & other)
 requires std::is_copy_constructible_v<mapped_type>
 {
     if (this != &other) {
         // Copy-and-swap idiom for strong exception safety
-        SlotMap copy(other);
+        BasicSlotMap copy(other);
         swap(copy);
     }
     return *this;
 }
 
 template <typename TraitsT>
-SlotMap<TraitsT>::
-SlotMap(SlotMap && other) noexcept
+BasicSlotMap<TraitsT>::
+BasicSlotMap(BasicSlotMap && other) noexcept
 : traits_type{std::move(other)}
 , free_list_head_{other.free_list_head_}
 , size_{other.size_}
@@ -81,9 +81,9 @@ SlotMap(SlotMap && other) noexcept
 }
 
 template <typename TraitsT>
-SlotMap<TraitsT> &
-SlotMap<TraitsT>::
-operator = (SlotMap && other) noexcept
+BasicSlotMap<TraitsT> &
+BasicSlotMap<TraitsT>::
+operator = (BasicSlotMap && other) noexcept
 {
     if (this != &other) {
         traits_type::operator = (std::move(other));
@@ -106,23 +106,23 @@ operator = (SlotMap && other) noexcept
 
 template <typename TraitsT>
 bool
-SlotMap<TraitsT>::
+BasicSlotMap<TraitsT>::
 is_empty() const noexcept
 {
     return size_ == 0;
 }
 
 template <typename TraitsT>
-SlotMap<TraitsT>::size_type
-SlotMap<TraitsT>::
+BasicSlotMap<TraitsT>::size_type
+BasicSlotMap<TraitsT>::
 size() const noexcept
 {
     return size_type(size_);
 }
 
 template <typename TraitsT>
-constexpr SlotMap<TraitsT>::size_type
-SlotMap<TraitsT>::
+constexpr BasicSlotMap<TraitsT>::size_type
+BasicSlotMap<TraitsT>::
 compute_default_slab_size() noexcept
 {
     constexpr size_type max_slots = end_of_free_list;
@@ -146,7 +146,7 @@ compute_default_slab_size() noexcept
 
 template <typename TraitsT>
 void
-SlotMap<TraitsT>::
+BasicSlotMap<TraitsT>::
 validate_slab_size(size_type slots_per_slab)
 {
     if (slots_per_slab.value == 0) {
@@ -170,7 +170,7 @@ validate_slab_size(size_type slots_per_slab)
 
 template <typename TraitsT>
 bool
-SlotMap<TraitsT>::
+BasicSlotMap<TraitsT>::
 allocate_new_slab()
 {
     // Check if we've exhausted the index space
@@ -211,7 +211,7 @@ allocate_new_slab()
 
 template <typename TraitsT>
 void
-SlotMap<TraitsT>::
+BasicSlotMap<TraitsT>::
 initialize_slab_free_list(slab_type * slab, index_type base)
 {
     // Link all slots in the slab into a chain
@@ -234,8 +234,8 @@ initialize_slab_free_list(slab_type * slab, index_type base)
 
 template <typename TraitsT>
 template <typename... Args>
-SlotMap<TraitsT>::key_type
-SlotMap<TraitsT>::
+BasicSlotMap<TraitsT>::key_type
+BasicSlotMap<TraitsT>::
 try_emplace(Args &&... args)
 {
     // Check if free list is empty, allocate new slab if needed
@@ -267,8 +267,8 @@ try_emplace(Args &&... args)
 
 template <typename TraitsT>
 template <typename... Args>
-SlotMap<TraitsT>::key_type
-SlotMap<TraitsT>::
+BasicSlotMap<TraitsT>::key_type
+BasicSlotMap<TraitsT>::
 emplace(Args &&... args)
 {
     auto key = try_emplace(std::forward<Args>(args)...);
@@ -281,7 +281,7 @@ emplace(Args &&... args)
 
 template <typename TraitsT>
 bool
-SlotMap<TraitsT>::
+BasicSlotMap<TraitsT>::
 erase(key_type key)
 {
     auto const key_idx = key.index();
@@ -340,8 +340,8 @@ erase(key_type key)
 }
 
 template <typename TraitsT>
-std::optional<typename SlotMap<TraitsT>::mapped_type>
-SlotMap<TraitsT>::
+std::optional<typename BasicSlotMap<TraitsT>::mapped_type>
+BasicSlotMap<TraitsT>::
 pop(key_type key)
 requires std::is_move_constructible_v<mapped_type>
 {
@@ -455,7 +455,7 @@ is_valid(VersionT version, SlotT const & slot, SlabT const * slab, IndexT index)
 
 template <typename TraitsT>
 bool
-SlotMap<TraitsT>::
+BasicSlotMap<TraitsT>::
 use(auto & self, key_type key, auto & func)
 {
     using detail::use_callback_wants_options;
@@ -498,7 +498,7 @@ use(auto & self, key_type key, auto & func)
 template <typename TraitsT>
 template <typename F>
 bool
-SlotMap<TraitsT>::
+BasicSlotMap<TraitsT>::
 use(key_type key, F && func)
 {
     return use(*this, key, func);
@@ -507,7 +507,7 @@ use(key_type key, F && func)
 template <typename TraitsT>
 template <typename F>
 bool
-SlotMap<TraitsT>::
+BasicSlotMap<TraitsT>::
 use(key_type key, F && func) const
 {
     return use(*this, key, func);
@@ -515,7 +515,7 @@ use(key_type key, F && func) const
 
 template <typename TraitsT>
 bool
-SlotMap<TraitsT>::
+BasicSlotMap<TraitsT>::
 contains(key_type key) const
 {
     return use(key, [](mapped_type const &) {});
@@ -540,8 +540,8 @@ invoke_for_each(F & func, KeyT key, ValT & val, [[maybe_unused]] Options & opts)
 
 template <typename TraitsT>
 template <typename F>
-SlotMap<TraitsT>::size_type
-SlotMap<TraitsT>::
+BasicSlotMap<TraitsT>::size_type
+BasicSlotMap<TraitsT>::
 for_each(F && func)
 {
     return for_each(*this, func);
@@ -549,16 +549,16 @@ for_each(F && func)
 
 template <typename TraitsT>
 template <typename F>
-SlotMap<TraitsT>::size_type
-SlotMap<TraitsT>::
+BasicSlotMap<TraitsT>::size_type
+BasicSlotMap<TraitsT>::
 for_each(F && func) const
 {
     return for_each(*this, func);
 }
 
 template <typename TraitsT>
-SlotMap<TraitsT>::size_type
-SlotMap<TraitsT>::
+BasicSlotMap<TraitsT>::size_type
+BasicSlotMap<TraitsT>::
 for_each(auto & self, auto & func)
 {
     using SelfT = std::remove_reference_t<decltype(self)>;
@@ -611,8 +611,8 @@ for_each(auto & self, auto & func)
 
 template <typename TraitsT>
 void
-SlotMap<TraitsT>::
-swap(SlotMap & other) noexcept
+BasicSlotMap<TraitsT>::
+swap(BasicSlotMap & other) noexcept
 {
     using std::swap;
     // Swap the storage policy (handles slabs_ and any policy-specific state)
@@ -627,7 +627,7 @@ swap(SlotMap & other) noexcept
 
 template <typename TraitsT>
 void
-SlotMap<TraitsT>::
+BasicSlotMap<TraitsT>::
 clear()
 {
     // Start with empty free list - we'll rebuild it
@@ -677,7 +677,7 @@ clear()
 
 template <typename TraitsT>
 void
-SlotMap<TraitsT>::
+BasicSlotMap<TraitsT>::
 reset()
 {
     this->storage_clear();
@@ -690,7 +690,7 @@ reset()
 
 template <typename TraitsT>
 void
-SlotMap<TraitsT>::
+BasicSlotMap<TraitsT>::
 reserve(size_type n)
 {
     // Calculate how many total slots we need
@@ -705,8 +705,8 @@ reserve(size_type n)
 }
 
 template <typename TraitsT>
-SlotMap<TraitsT>::statistics_type
-SlotMap<TraitsT>::
+BasicSlotMap<TraitsT>::statistics_type
+BasicSlotMap<TraitsT>::
 statistics() const noexcept
 {
     statistics_type stats{};
@@ -719,6 +719,7 @@ statistics() const noexcept
     // The -1 is because slot 0 starts at version 1 to avoid null key
     constexpr auto max_version_count = std::size_t{1} << key_type::version_bits;
     constexpr auto max_index_count = std::size_t{1} << key_type::index_bits;
+    // TODO: This can overflow when version_bits + index_bits >= 64.
     stats.max_objects = max_index_count * max_version_count - 1;
 
     // Slot accounting

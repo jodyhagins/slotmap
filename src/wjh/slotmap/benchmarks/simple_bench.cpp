@@ -16,7 +16,8 @@ namespace {
 struct Entity
 { };
 
-using EntityKey = wjh::slotmap::Key<Entity, 20, 12>;
+using EntityKey = wjh::slotmap::
+    Key<Entity, wjh::slotmap::IndexBits(20), wjh::slotmap::VersionBits(12)>;
 
 template <typename KeyT>
 KeyT

@@ -7,7 +7,12 @@
 #ifndef WJH_SLOTMAP_E253A0A968334A30AADC240EA20ABEF2
 #define WJH_SLOTMAP_E253A0A968334A30AADC240EA20ABEF2
 
-namespace wjh::slotmap::detail {
+namespace wjh::slotmap {
+
+template <KeyC, SlotsPerSlab, UseAliveBitForLookup>
+struct Traits;
+
+namespace detail {
 
 // Forward declaration
 template <typename TraitsT>
@@ -483,14 +488,59 @@ struct traits<TraitsT>
 };
 
 template <typename T>
-requires KeyC<T>
-struct traits<T>
-: traits<Traits<T, SlotsPerSlab::Dynamic, UseAliveBitForLookup::Yes>>
-{ };
-
-template <typename T>
 using traits_t = typename traits<T>::type;
 
-} // namespace wjh::slotmap::detail
+template <auto defalt, auto... vs>
+inline constexpr auto locate = defalt;
+template <auto defalt, auto v, auto... vs>
+inline constexpr auto locate<defalt, v, vs...> = locate<defalt, vs...>;
+template <auto defalt, decltype(defalt) t, auto... vs>
+inline constexpr auto locate<defalt, t, vs...> = t;
+
+template <auto... vs>
+inline constexpr auto slots_per_slab = locate<SlotsPerSlab::Dynamic, vs...>;
+
+template <auto... vs>
+inline constexpr auto alive_bits = locate<UseAliveBitForLookup::Yes, vs...>;
+
+template <auto... vs>
+inline constexpr auto index_bits = locate<IndexBits(0), vs...>;
+
+template <auto... vs>
+inline constexpr auto version_bits = locate<VersionBits(0), vs...>;
+
+template <auto... vs>
+inline constexpr auto user_bits = locate<UserBits(0), vs...>;
+
+template <typename T, auto... vs>
+inline constexpr std::true_type is_slotmap_traits(Traits<T, vs...> const *);
+inline constexpr std::false_type is_slotmap_traits(void const *);
+template <typename T>
+concept TraitsC = decltype(is_slotmap_traits(static_cast<T *>(nullptr)))::value;
+
+template <typename T, auto... vs>
+struct helper
+: helper<
+      Key<T, index_bits<vs...>, version_bits<vs...>, user_bits<vs...>>,
+      vs...>
+{ };
+
+template <TraitsC T>
+struct helper<T>
+{
+    using type = T;
+};
+
+template <KeyC KeyT, auto... vs>
+struct helper<KeyT, vs...>
+{
+    using type = Traits<KeyT, slots_per_slab<vs...>, alive_bits<vs...>>;
+};
+
+template <typename T, auto... vs>
+using helper_t = typename helper<T, vs...>::type;
+
+} // namespace detail
+} // namespace wjh::slotmap
 
 #endif // WJH_SLOTMAP_E253A0A968334A30AADC240EA20ABEF2

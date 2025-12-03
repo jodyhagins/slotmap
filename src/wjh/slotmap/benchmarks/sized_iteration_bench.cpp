@@ -10,20 +10,26 @@
 // This benchmark uses appropriately-sized index bits for each collection
 // size to provide a fair comparison against std::unordered_map.
 //
-// The standard benchmarks use Key<T, 20, 12> for all sizes, which means
-// small collections (100 elements) still iterate over 4096-slot slabs,
-// checking is_alive() for each slot. This is unfair to SlotMap for small
-// sizes.
+// The standard benchmarks use Key<T, wjh::slotmap::IndexBits(20),
+// wjh::slotmap::VersionBits(12)> for all sizes, which means small collections
+// (100 elements) still iterate over 4096-slot slabs, checking is_alive() for
+// each slot. This is unfair to SlotMap for small sizes.
 //
 // Key bit totals must be 16, 32, 64, or 128. We use 32-bit keys for
 // smaller sizes and use index bits appropriate to the collection size:
 //
-//   - Key<T, 7, 25>   for 100 elements   (128 max slots)
-//   - Key<T, 10, 22>  for 1000 elements  (1024 max slots)
-//   - Key<T, 13, 19>  for 4096 elements  (8192 max slots)
-//   - Key<T, 15, 17>  for 32K elements   (32K max slots)
-//   - Key<T, 18, 14>  for 262K elements  (262K max slots)
-//   - Key<T, 20, 12>  for 1M elements    (1M max slots)
+//   - Key<T, wjh::slotmap::IndexBits(7), wjh::slotmap::VersionBits(25)>   for
+//   100 elements   (128 max slots)
+//   - Key<T, wjh::slotmap::IndexBits(10), wjh::slotmap::VersionBits(22)>  for
+//   1000 elements  (1024 max slots)
+//   - Key<T, wjh::slotmap::IndexBits(13), wjh::slotmap::VersionBits(19)>  for
+//   4096 elements  (8192 max slots)
+//   - Key<T, wjh::slotmap::IndexBits(15), wjh::slotmap::VersionBits(17)>  for
+//   32K elements   (32K max slots)
+//   - Key<T, wjh::slotmap::IndexBits(18), wjh::slotmap::VersionBits(14)>  for
+//   262K elements  (262K max slots)
+//   - Key<T, wjh::slotmap::IndexBits(20), wjh::slotmap::VersionBits(12)>  for
+//   1M elements    (1M max slots)
 //
 // All benchmarks test 4 configuration combinations:
 //   - All_Alive:    SlotsPerSlab::All + UseAliveBitForLookup::Yes

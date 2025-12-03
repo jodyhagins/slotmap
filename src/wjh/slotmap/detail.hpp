@@ -7,6 +7,8 @@
 #ifndef WJH_SLOTMAP_CA3F4DEEB84042E584DF898CE8D8E93A
 #define WJH_SLOTMAP_CA3F4DEEB84042E584DF898CE8D8E93A
 
+#include "types.hpp"
+
 #include <cassert>
 #include <cstddef>
 #include <cstdint>

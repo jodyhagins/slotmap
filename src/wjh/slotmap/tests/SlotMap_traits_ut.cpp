@@ -14,9 +14,10 @@
 #include "testing/rapidcheck.hpp"
 
 namespace {
+using namespace wjh::slotmap::literals;
 
 // Test configurations with embedded alive bit (20 version bits in uint16_t)
-using EmbeddedKey = wjh::slotmap::Key<int, 12, 20>;
+using EmbeddedKey = wjh::slotmap::Key<int, 12_ib, 20_vb>;
 using EmbeddedTraits = wjh::slotmap::Traits<
     EmbeddedKey,
     wjh::slotmap::SlotsPerSlab::All,
@@ -199,8 +200,10 @@ TEST_SUITE("alive_bit_trait - Combined Version+Alive Check")
     TEST_CASE("Combined check handles version wrapping")
     {
         // Use small version bits to force wrapping
-        using SmallVersionKey =
-            wjh::slotmap::Key<int, 12, 4>; // Only 4 version bits
+        using SmallVersionKey = wjh::slotmap::Key<
+            int,
+            12_ib,
+            4_vb>; // Only 4 version bits
         using SmallTraits = wjh::slotmap::Traits<
             SmallVersionKey,
             wjh::slotmap::SlotsPerSlab::All,
