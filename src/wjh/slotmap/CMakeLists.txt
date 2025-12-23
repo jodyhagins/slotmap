@@ -24,6 +24,7 @@ target_sources(wjh_slotmap
 target_include_directories(wjh_slotmap
         INTERFACE
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>
+        $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
         $<INSTALL_INTERFACE:include>
 )
 

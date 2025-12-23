@@ -199,9 +199,12 @@ In your code:
 
 ## Requirements
 
-- C++20 compiler (GCC 10+, Clang 12+, MSVC 19.29+)
+- C++20 compiler (GCC 10+, Clang 12+)
 - No external dependencies for the library itself
 - Tests require doctest and rapidcheck (fetched automatically by CMake)
+- 128-bit keys require `__uint128_t` support (GCC/Clang on 64-bit platforms)
+
+**Note:** MSVC is not currently tested or supported.
 
 ## Building and Testing
 

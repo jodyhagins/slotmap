@@ -257,7 +257,11 @@ try_emplace(Args &&... args)
     ++size_;
     ++objects_created_;
 
-    // TODO: allow user to set a default-user-type-value that gets used here.
+    // TODO(C24): Allow user to configure a default user bits value via Traits.
+    // Currently all keys from emplace/try_emplace have user_type{0}. Users who
+    // want non-zero default user bits must use key.with_user() after insertion.
+    // Potential implementation: Add DefaultUserBits to Traits and use it here:
+    //   return key_type(idx, ver, user_type{traits_type::default_user_bits});
     return key_type(idx, ver, user_type{});
 }
 
@@ -276,6 +280,51 @@ emplace(Args &&... args)
 }
 
 template <TraitsC TraitsT>
+void
+BasicSlotMap<TraitsT>::
+handle_slot_removal(
+    std::size_t slab_idx,
+    slot_type & slot,
+    index_type key_idx,
+    bool can_reuse)
+{
+    --size_;
+    if (can_reuse) {
+        // Add to free list
+        slot.set_next(free_list_head_);
+        free_list_head_ = size_type(key_idx);
+    } else {
+        // Slot is dead - increment counter and check if slab can be recycled.
+        // Recycling is an optimization: the exhausted slab's memory is reused
+        // at the next slab position, avoiding a new allocation when that index
+        // range is needed. It does NOT extend capacity or provide more slots.
+        ++dead_slots_;
+        this->storage_try_recycle_slab(
+            slab_idx,
+            [this](slab_type *)
+                -> std::optional<
+                    std::tuple<std::size_t, index_type, size_type>> {
+                // Check if there's room for more slabs in the index space
+                auto const new_base = next_slab_base_index_;
+                if (size_type(new_base) + size_type(slots_per_slab_) >
+                    max_slots) {
+                    return std::nullopt;
+                }
+
+                auto const first_index = index_type(
+                    static_cast<naked_index_type>(new_base));
+                auto const new_idx = this->storage_slab_index(first_index);
+
+                // Update next_slab_base_index_ and free_list_head_
+                next_slab_base_index_ += slots_per_slab_;
+                free_list_head_ = size_type(new_base);
+
+                return std::tuple{new_idx, first_index, free_list_head_};
+            });
+    }
+}
+
+template <TraitsC TraitsT>
 bool
 BasicSlotMap<TraitsT>::
 erase(key_type key)
@@ -288,47 +337,8 @@ erase(key_type key)
         if (auto & slot = slab->slot(slot_idx);
             slot.version() == key.version() && slab->is_alive(slot_idx))
         {
-            // Destroy the value - returns true if slot can be reused
             bool const can_reuse = slab->destroy(slot_idx);
-            --size_;
-            if (can_reuse) {
-                // Add to free list
-                slot.set_next(free_list_head_);
-                free_list_head_ = size_type(key_idx);
-            } else {
-                // Slot is dead - increment counter and check if slab can be
-                // recycled
-                ++dead_slots_;
-                this->storage_try_recycle_slab(
-                    slab_idx,
-                    [this](slab_type *)
-                        -> std::optional<
-                            std::tuple<std::size_t, index_type, size_type>> {
-                        // Check if there's room for more slabs in the index
-                        // space
-                        auto const new_base = next_slab_base_index_;
-                        if (size_type(new_base) + size_type(slots_per_slab_) >
-                            max_slots)
-                        {
-                            return std::nullopt;
-                        }
-
-                        auto const first_index = index_type(
-                            static_cast<naked_index_type>(new_base));
-                        auto const new_idx = this->storage_slab_index(
-                            first_index);
-
-                        // Update next_slab_base_index_ and free_list_head_
-                        next_slab_base_index_ += slots_per_slab_;
-                        free_list_head_ = size_type(new_base);
-
-                        return std::tuple{
-                            new_idx,
-                            first_index,
-                            free_list_head_};
-                    });
-            }
-
+            handle_slot_removal(slab_idx, slot, key_idx, can_reuse);
             return true;
         }
     }
@@ -351,45 +361,8 @@ requires std::is_move_constructible_v<mapped_type>
         {
             // Move the value out before destroying
             auto result = std::make_optional(std::move(slot.value()));
-
-            // Destroy the value - returns true if slot can be reused
             bool const can_reuse = slab->destroy(slot_idx);
-            --size_;
-            if (can_reuse) {
-                // Add to free list
-                slot.set_next(free_list_head_);
-                free_list_head_ = size_type(key_idx);
-            } else {
-                // Slot is dead - increment counter and check if slab can be
-                // recycled (no-op for single slab)
-                ++dead_slots_;
-                this->storage_try_recycle_slab(
-                    slab_idx,
-                    [this](slab_type *)
-                        -> std::optional<
-                            std::tuple<std::size_t, index_type, size_type>> {
-                        auto const new_base = next_slab_base_index_;
-                        if (size_type(new_base) + size_type(slots_per_slab_) >
-                            max_slots)
-                        {
-                            return std::nullopt;
-                        }
-
-                        auto const first_index = index_type(
-                            static_cast<naked_index_type>(new_base));
-                        auto const new_idx = this->storage_slab_index(
-                            first_index);
-
-                        next_slab_base_index_ += slots_per_slab_;
-                        free_list_head_ = size_type(new_base);
-
-                        return std::tuple{
-                            new_idx,
-                            first_index,
-                            free_list_head_};
-                    });
-            }
-
+            handle_slot_removal(slab_idx, slot, key_idx, can_reuse);
             return result;
         }
     }
@@ -561,6 +534,10 @@ use(auto & self, key_type key, auto & func)
 
 template <TraitsC TraitsT>
 template <typename F>
+requires UseCallbackC<
+    F,
+    typename BasicSlotMap<TraitsT>::key_type,
+    typename BasicSlotMap<TraitsT>::mapped_type>
 [[nodiscard]]
 auto
 BasicSlotMap<TraitsT>::
@@ -571,6 +548,10 @@ use(key_type key, F && func)
 
 template <TraitsC TraitsT>
 template <typename F>
+requires ConstUseCallbackC<
+    F,
+    typename BasicSlotMap<TraitsT>::key_type,
+    typename BasicSlotMap<TraitsT>::mapped_type>
 [[nodiscard]]
 auto
 BasicSlotMap<TraitsT>::
@@ -606,6 +587,10 @@ invoke_for_each(F & func, KeyT key, ValT & val, [[maybe_unused]] Options & opts)
 
 template <TraitsC TraitsT>
 template <typename F>
+requires ForEachCallbackC<
+    F,
+    typename BasicSlotMap<TraitsT>::key_type,
+    typename BasicSlotMap<TraitsT>::mapped_type>
 BasicSlotMap<TraitsT>::size_type
 BasicSlotMap<TraitsT>::
 for_each(F && func)
@@ -615,6 +600,10 @@ for_each(F && func)
 
 template <TraitsC TraitsT>
 template <typename F>
+requires ConstForEachCallbackC<
+    F,
+    typename BasicSlotMap<TraitsT>::key_type,
+    typename BasicSlotMap<TraitsT>::mapped_type>
 BasicSlotMap<TraitsT>::size_type
 BasicSlotMap<TraitsT>::
 for_each(F && func) const
@@ -787,10 +776,37 @@ statistics() const noexcept
 
     // max_objects = 2^IndexBits * 2^VersionBits - 1
     // The -1 is because slot 0 starts at version 1 to avoid null key
-    constexpr auto max_version_count = std::size_t{1} << key_type::version_bits;
-    constexpr auto max_index_count = std::size_t{1} << key_type::index_bits;
-    // TODO: This can overflow when version_bits + index_bits >= 64.
-    stats.max_objects = max_index_count * max_version_count - 1;
+    //
+    // This computation can overflow std::size_t when index_bits + version_bits
+    // >= 64. We use __uint128_t when available for larger bit counts, and
+    // saturate at SIZE_MAX when the result cannot be represented.
+    constexpr auto total_bits = key_type::index_bits + key_type::version_bits;
+    if constexpr (total_bits < 64) {
+        // Safe: result fits in 64 bits
+        constexpr auto max_objects_value = (std::size_t{1} << total_bits) -
+            std::size_t{1};
+        stats.max_objects = max_objects_value;
+    }
+#ifdef __SIZEOF_INT128__
+    else if constexpr (total_bits < 128)
+    {
+        // Use 128-bit arithmetic, then check if result fits in size_t
+        constexpr __uint128_t one = 1;
+        constexpr __uint128_t max_objects_128 = (one << total_bits) - one;
+        constexpr auto size_max = std::numeric_limits<std::size_t>::max();
+        if constexpr (max_objects_128 <= size_max) {
+            stats.max_objects = static_cast<std::size_t>(max_objects_128);
+        } else {
+            // Saturate: value too large for size_t
+            stats.max_objects = size_max;
+        }
+    }
+#endif
+    else
+    {
+        // total_bits >= 64 (or >= 128 without __uint128_t): saturate
+        stats.max_objects = std::numeric_limits<std::size_t>::max();
+    }
 
     // Slot accounting
     stats.active_slots = size_;

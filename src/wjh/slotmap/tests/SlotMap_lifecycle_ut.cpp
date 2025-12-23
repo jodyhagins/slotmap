@@ -146,7 +146,7 @@ TEST_CASE("SlotMap: constants")
 
     SUBCASE("max_total_objects is one 2^IndexBits + 2^VersionBits - 1") {
         using Map16 = SlotMap<Key<int, 16_ib, 16_vb>>;
-        CHECK(Map16::max_total_objects.value == 0xffffffffu);
+        CHECK(Map16::max_total_objects.value == 0xffff'ffffu);
 
         using Map8 = SlotMap<Key<int, 8_ib, 8_vb, 16_ub>>;
         CHECK(Map8::max_total_objects.value == 0xffffu);

@@ -23,8 +23,10 @@ using wjh::slotmap::Key;
 using wjh::slotmap::Options;
 using namespace wjh::slotmap::literals;
 
+// Test helper that adds convenient constructors accepting raw integers.
+// Named distinctly from wjh::slotmap::SlotMap to avoid confusion.
 template <typename KeyT>
-class SlotMap
+class TestSlotMap
 : public wjh::slotmap::SlotMap<KeyT>
 {
     using Base = wjh::slotmap::SlotMap<KeyT>;
@@ -35,7 +37,7 @@ public:
     using Base::Base;
 
     template <typename SizeT>
-    explicit SlotMap(SizeT slots_per_slab)
+    explicit TestSlotMap(SizeT slots_per_slab)
     requires std::is_integral_v<SizeT>
     : Base(size_type{static_cast<naked_size_type>(slots_per_slab)})
     { }
@@ -80,7 +82,7 @@ TEST_CASE("SlotMap: exception safety - emplace strong guarantee")
 {
     ThrowOnConstruct::reset(5);
 
-    SlotMap<Key<ThrowOnConstruct, 16_ib, 16_vb>> map;
+    TestSlotMap<Key<ThrowOnConstruct, 16_ib, 16_vb>> map;
 
     // Emplace 5 elements successfully
     std::vector<Key<ThrowOnConstruct, 16_ib, 16_vb>> keys;
@@ -112,7 +114,7 @@ TEST_CASE("SlotMap: exception safety - emplace strong guarantee")
 
 TEST_CASE("SlotMap: exception safety - copy constructor strong guarantee")
 {
-    SlotMap<Key<ThrowOnConstruct, 16_ib, 16_vb>> original;
+    TestSlotMap<Key<ThrowOnConstruct, 16_ib, 16_vb>> original;
 
     // Build original with 10 elements
     ThrowOnConstruct::reset(100);
@@ -125,7 +127,7 @@ TEST_CASE("SlotMap: exception safety - copy constructor strong guarantee")
 
     SUBCASE("copy succeeds when enough constructions allowed") {
         ThrowOnConstruct::reset(100);
-        SlotMap<Key<ThrowOnConstruct, 16_ib, 16_vb>> copy(original);
+        TestSlotMap<Key<ThrowOnConstruct, 16_ib, 16_vb>> copy(original);
 
         CHECK(copy.size().value == 10);
         for (auto key : original_keys) {
@@ -138,7 +140,7 @@ TEST_CASE("SlotMap: exception safety - copy constructor strong guarantee")
 
         bool threw = false;
         try {
-            SlotMap<Key<ThrowOnConstruct, 16_ib, 16_vb>> copy(original);
+            TestSlotMap<Key<ThrowOnConstruct, 16_ib, 16_vb>> copy(original);
             (void)copy;
         } catch (std::runtime_error const &) {
             threw = true;
@@ -158,8 +160,8 @@ TEST_CASE("SlotMap: exception safety - copy assignment strong guarantee")
 {
     ThrowOnConstruct::reset(100);
 
-    SlotMap<Key<ThrowOnConstruct, 16_ib, 16_vb>> source;
-    SlotMap<Key<ThrowOnConstruct, 16_ib, 16_vb>> target;
+    TestSlotMap<Key<ThrowOnConstruct, 16_ib, 16_vb>> source;
+    TestSlotMap<Key<ThrowOnConstruct, 16_ib, 16_vb>> target;
 
     // Build source
     std::vector<Key<ThrowOnConstruct, 16_ib, 16_vb>> source_keys;
@@ -215,7 +217,7 @@ TEST_CASE("SlotMap: edge case - 1-bit version field")
     // Key<31, 1_ib, 0_vb> = 32
     // bits total With 1-bit version, max_version = 1, so slots become dead
     // quickly
-    SlotMap<Key<int, 31_ib, 1_vb>> map(4u);
+    TestSlotMap<Key<int, 31_ib, 1_vb>> map(4u);
 
     SUBCASE("slot becomes dead after single erase - can still emplace more") {
         auto key1 = map.emplace(1);
@@ -257,7 +259,7 @@ TEST_CASE("SlotMap: edge case - 1-bit index field")
 {
     // Key<1, 31_ib, 0_vb> = 32
     // bits, only 2 possible indices (0 and 1)
-    SlotMap<Key<int, 1_ib, 31_vb>> map(2u); // 2 slots per slab (max)
+    TestSlotMap<Key<int, 1_ib, 31_vb>> map(2u); // 2 slots per slab (max)
 
     SUBCASE("can only hold 2 elements") {
         auto key0 = map.emplace(0);
@@ -288,7 +290,7 @@ TEST_CASE("SlotMap: edge case - maximum version values")
     // Key<24, 8_ib, 0_vb> = 32
     // bits, 8-bit version = max 255 After max_version uses of a slot, it
     // becomes dead
-    SlotMap<Key<int, 24_ib, 8_vb>> map(1u); // 1 slot per slab
+    TestSlotMap<Key<int, 24_ib, 8_vb>> map(1u); // 1 slot per slab
 
     SUBCASE("many emplace/erase cycles work correctly") {
         // With 8-bit version (max 255), a single slot can be reused many times.
@@ -339,7 +341,7 @@ TEST_CASE("SlotMap: edge case - maximum version values")
 
 TEST_CASE("SlotMap: edge case - single slot slab")
 {
-    SlotMap<Key<int, 16_ib, 16_vb>> map(1u);
+    TestSlotMap<Key<int, 16_ib, 16_vb>> map(1u);
 
     SUBCASE("single element operations") {
         auto key = map.emplace(42);
@@ -379,7 +381,8 @@ TEST_CASE("SlotMap: edge case - single slot slab")
 TEST_CASE("SlotMap: edge case - maximum slab size")
 {
     // Use 8-bit index = 256 max slots, with slab size = 256
-    SlotMap<Key<int, 8_ib, 24_vb>> map(256u); // Max slab size for 8-bit index
+    // Max slab size for 8-bit index
+    TestSlotMap<Key<int, 8_ib, 24_vb>> map(256u);
 
     SUBCASE("single slab holds all indices") {
         for (int i = 0; i < 256; ++i) {
@@ -398,7 +401,7 @@ TEST_CASE("SlotMap: edge case - maximum slab size")
 TEST_CASE("SlotMap: edge case - very small key (4+4+24=32)")
 {
     // 4-bit index = 16 slots, 4-bit version = 16 versions
-    SlotMap<Key<int, 4_ib, 4_vb, 24_ub>> map(4u);
+    TestSlotMap<Key<int, 4_ib, 4_vb, 24_ub>> map(4u);
 
     SUBCASE("16 indices available") {
         std::vector<Key<int, 4_ib, 4_vb, 24_ub>> keys;
@@ -445,7 +448,7 @@ TEST_CASE("SlotMap: edge case - 64-bit key")
 {
     // Key<20, 20_ib, 24_vb> = 64
     // bits
-    SlotMap<Key<int, 20_ib, 20_vb, 24_ub>> map(1024u);
+    TestSlotMap<Key<int, 20_ib, 20_vb, 24_ub>> map(1024u);
 
     SUBCASE("basic operations work with 64-bit key") {
         auto key = map.emplace(42);
@@ -482,10 +485,10 @@ TEST_CASE("SlotMap: edge case - 64-bit key")
 
 TEST_CASE("SlotMap: static assertions for type traits")
 {
-    using Map32 = SlotMap<Key<int, 16_ib, 16_vb>>;
-    using Map64 = SlotMap<Key<int, 20_ib, 20_vb, 24_ub>>;
-    using MapString = SlotMap<Key<std::string, 16_ib, 16_vb>>;
-    using MapUniquePtr = SlotMap<Key<std::unique_ptr<int>, 16_ib, 16_vb>>;
+    using Map32 = TestSlotMap<Key<int, 16_ib, 16_vb>>;
+    using Map64 = TestSlotMap<Key<int, 20_ib, 20_vb, 24_ub>>;
+    using MapString = TestSlotMap<Key<std::string, 16_ib, 16_vb>>;
+    using MapUniquePtr = TestSlotMap<Key<std::unique_ptr<int>, 16_ib, 16_vb>>;
 
     // Default constructible
     static_assert(std::is_default_constructible_v<Map32>);
@@ -575,7 +578,7 @@ TEST_CASE("SlotMap: property-based version exhaustion and recycling")
 {
     rc::check("version exhaustion triggers slot death", []() {
         // Use 2-bit version for quick exhaustion
-        SlotMap<Key<int, 30_ib, 2_vb>> map(4u);
+        TestSlotMap<Key<int, 30_ib, 2_vb>> map(4u);
 
         auto const initial_count = *rc::gen::inRange<std::size_t>(1, 4);
 
@@ -607,7 +610,7 @@ TEST_CASE("SlotMap: property-based version exhaustion and recycling")
 TEST_CASE("SlotMap: property-based clear preserves structure")
 {
     rc::check("clear followed by refill works correctly", []() {
-        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map;
+        TestSlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map;
 
         auto const count1 = *rc::gen::inRange<std::size_t>(0, 50);
         auto const count2 = *rc::gen::inRange<std::size_t>(0, 50);
@@ -651,7 +654,7 @@ TEST_CASE("SlotMap: property-based clear preserves structure")
 TEST_CASE("SlotMap: property-based for_each early exit")
 {
     rc::check("for_each early exit visits correct count", []() {
-        SlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map;
+        TestSlotMap<Key<int, 16_ib, 15_vb, 1_ub>> map;
 
         auto const count = *rc::gen::inRange<std::size_t>(1, 100);
         auto const stop_at = *rc::gen::inRange<std::size_t>(1, count + 1);
@@ -676,7 +679,7 @@ TEST_CASE("SlotMap: property-based for_each early exit")
 TEST_CASE("SlotMap: property-based reserve and emplace")
 {
     rc::check("reserve allows emplace without reallocation", []() {
-        using TestMap = SlotMap<Key<int, 12_ib, 12_vb, 8_ub>>;
+        using TestMap = TestSlotMap<Key<int, 12_ib, 12_vb, 8_ub>>;
         TestMap map(64u);
 
         auto const reserve_count = *rc::gen::inRange<std::size_t>(0, 256);

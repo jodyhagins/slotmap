@@ -26,6 +26,13 @@ include(CTest)
 include(CompileOptions)
 include(ThirdParty)
 
+# Generate version header
+configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/wjh/slotmap/version.hpp.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/include/wjh/slotmap/version.hpp"
+        @ONLY
+)
+
 # Configuration files for find_package() support
 # Only generate when building as top-level project
 if (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)

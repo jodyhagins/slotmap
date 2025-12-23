@@ -4,6 +4,9 @@
 // See accompanying file LICENSE or copy at
 // https://opensource.org/licenses/MIT
 // ----------------------------------------------------------------------
+// INTERNAL IMPLEMENTATION HEADER - Do not include directly.
+// Use <wjh/slotmap/SlotMap.hpp> or <wjh/slotmap.hpp> instead.
+// ----------------------------------------------------------------------
 #ifndef WJH_SLOTMAP_E253A0A968334A30AADC240EA20ABEF2
 #define WJH_SLOTMAP_E253A0A968334A30AADC240EA20ABEF2
 

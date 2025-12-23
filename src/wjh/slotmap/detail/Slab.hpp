@@ -4,6 +4,9 @@
 // See accompanying file LICENSE or copy at
 // https://opensource.org/licenses/MIT
 // ----------------------------------------------------------------------
+// INTERNAL IMPLEMENTATION HEADER - Do not include directly.
+// Use <wjh/slotmap/SlotMap.hpp> or <wjh/slotmap.hpp> instead.
+// ----------------------------------------------------------------------
 #ifndef WJH_SLOTMAP_0843744742F143B5826D3DA7D551B2EC
 #define WJH_SLOTMAP_0843744742F143B5826D3DA7D551B2EC
 
@@ -361,7 +364,10 @@ public:
                 auto const slot_idx = static_cast<naked_index_type>(
                     slot_base + bit_pos);
 
-                // Don't process slots beyond slots_per_slab
+                // Bitmap may have padding bits when slots_per_slab is not a
+                // multiple of 8. These padding bits are always 0, but we check
+                // bounds defensively to ensure we never access beyond the
+                // allocated slots array even if padding bits were corrupted.
                 if (slot_idx >= num_slots) {
                     break;
                 }

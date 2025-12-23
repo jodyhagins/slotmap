@@ -214,6 +214,33 @@ public:
     [[nodiscard]]
     constexpr std::size_t hash() const noexcept;
 
+    /**
+     * Check if this key identifies the same slot as another key.
+     *
+     * This compares only the index and version bits, ignoring user bits.
+     * Two keys that return true will access the same underlying object in a
+     * SlotMap, even if they have different user bits.
+     *
+     * @param key  The key to compare against
+     *
+     * @return true if both keys reference the same slot (index and version
+     * match)
+     *
+     * @note This is different from operator==, which compares ALL bits
+     *       including user bits.
+     *
+     * Example:
+     * @code
+     * auto k1 = map.emplace(value);
+     * auto k2 = k1.with_user({7});
+     * assert(k1 != k2); // Different keys (user bits differ)
+     * assert(k1.identifies_same_object(k2)); // Same underlying slot
+     * assert(map.contains(k1) && map.contains(k2)); // Both find same element
+     * @endcode
+     */
+    [[nodiscard]]
+    constexpr bool identifies_same_object(Key const & key) const noexcept;
+
 private:
     // ========================================================================
     // Hidden friends

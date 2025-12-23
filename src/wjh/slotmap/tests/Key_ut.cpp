@@ -1292,4 +1292,113 @@ TEST_CASE("Key: value semantics comprehensive test")
     }
 }
 
+// ============================================================================
+// identifies_same_object() Tests
+// ============================================================================
+
+TEST_CASE("Key: identifies_same_object basic behavior")
+{
+    SUBCASE("identical keys identify same object") {
+        constexpr auto k1 = make_key<void, 20_ib, 10_vb, 2_ub>(100, 5, 3);
+        constexpr auto k2 = make_key<void, 20_ib, 10_vb, 2_ub>(100, 5, 3);
+        static_assert(k1.identifies_same_object(k2));
+        REQUIRE(k1.identifies_same_object(k2));
+    }
+
+    SUBCASE("keys differing only in user bits identify same object") {
+        constexpr auto k1 = make_key<void, 20_ib, 10_vb, 2_ub>(100, 5, 0);
+        constexpr auto k2 = make_key<void, 20_ib, 10_vb, 2_ub>(100, 5, 3);
+        static_assert(k1 != k2); // Different keys
+        static_assert(k1.identifies_same_object(k2)); // Same slot
+        REQUIRE(k1 != k2);
+        REQUIRE(k1.identifies_same_object(k2));
+    }
+
+    SUBCASE("keys with different index do not identify same object") {
+        constexpr auto k1 = make_key<void, 20_ib, 10_vb, 2_ub>(100, 5, 3);
+        constexpr auto k2 = make_key<void, 20_ib, 10_vb, 2_ub>(101, 5, 3);
+        static_assert(not k1.identifies_same_object(k2));
+        REQUIRE(not k1.identifies_same_object(k2));
+    }
+
+    SUBCASE("keys with different version do not identify same object") {
+        constexpr auto k1 = make_key<void, 20_ib, 10_vb, 2_ub>(100, 5, 3);
+        constexpr auto k2 = make_key<void, 20_ib, 10_vb, 2_ub>(100, 6, 3);
+        static_assert(not k1.identifies_same_object(k2));
+        REQUIRE(not k1.identifies_same_object(k2));
+    }
+}
+
+TEST_CASE("Key: identifies_same_object with with_user")
+{
+    SUBCASE("with_user preserves slot identity") {
+        constexpr auto k1 = make_key<void, 20_ib, 10_vb, 2_ub>(100, 5, 1);
+        constexpr auto k2 = k1.with_user(2u);
+        constexpr auto k3 = k1.with_user(3u);
+
+        static_assert(k1 != k2);
+        static_assert(k2 != k3);
+        static_assert(k1 != k3);
+
+        static_assert(k1.identifies_same_object(k2));
+        static_assert(k2.identifies_same_object(k3));
+        static_assert(k1.identifies_same_object(k3));
+
+        REQUIRE(k1.identifies_same_object(k2));
+        REQUIRE(k2.identifies_same_object(k3));
+        REQUIRE(k1.identifies_same_object(k3));
+    }
+}
+
+TEST_CASE("Key: identifies_same_object with zero user bits")
+{
+    SUBCASE("works correctly when user_bits = 0") {
+        constexpr auto k1 = make_key<void, 24_ib, 8_vb, 0_ub>(16777215, 255);
+        constexpr auto k2 = make_key<void, 24_ib, 8_vb, 0_ub>(16777215, 255);
+        constexpr auto k3 = make_key<void, 24_ib, 8_vb, 0_ub>(16777215, 254);
+
+        static_assert(k1.identifies_same_object(k2));
+        static_assert(not k1.identifies_same_object(k3));
+
+        REQUIRE(k1.identifies_same_object(k2));
+        REQUIRE(not k1.identifies_same_object(k3));
+    }
+}
+
+TEST_CASE("Key: identifies_same_object null key handling")
+{
+    SUBCASE("null keys identify same object") {
+        constexpr auto null1 = Key<void, 20_ib, 10_vb, 2_ub>::null();
+        constexpr auto null2 = Key<void, 20_ib, 10_vb, 2_ub>{};
+
+        static_assert(null1.identifies_same_object(null2));
+        REQUIRE(null1.identifies_same_object(null2));
+    }
+
+    SUBCASE("null key does not identify same object as non-null") {
+        constexpr auto null_key = Key<void, 20_ib, 10_vb, 2_ub>::null();
+        constexpr auto k = make_key<void, 20_ib, 10_vb, 2_ub>(1, 0, 0);
+
+        static_assert(not null_key.identifies_same_object(k));
+        REQUIRE(not null_key.identifies_same_object(k));
+    }
+}
+
+TEST_CASE("Key: identifies_same_object is symmetric")
+{
+    SUBCASE("a.identifies_same_object(b) == b.identifies_same_object(a)") {
+        constexpr auto k1 = make_key<void, 20_ib, 10_vb, 2_ub>(100, 5, 1);
+        constexpr auto k2 = make_key<void, 20_ib, 10_vb, 2_ub>(100, 5, 2);
+        constexpr auto k3 = make_key<void, 20_ib, 10_vb, 2_ub>(200, 5, 1);
+
+        static_assert(
+            k1.identifies_same_object(k2) == k2.identifies_same_object(k1));
+        static_assert(
+            k1.identifies_same_object(k3) == k3.identifies_same_object(k1));
+
+        REQUIRE(k1.identifies_same_object(k2) == k2.identifies_same_object(k1));
+        REQUIRE(k1.identifies_same_object(k3) == k3.identifies_same_object(k1));
+    }
+}
+
 } // anonymous namespace

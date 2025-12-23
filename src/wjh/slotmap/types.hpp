@@ -88,6 +88,11 @@ struct Statistics
 
     /// Max objects ever creatable (2^IndexBits * 2^VersionBits - 1)
     /// The -1 is because slot 0 starts at version 1 to avoid the null key.
+    ///
+    /// @note When index_bits + version_bits >= 64, this value may be
+    ///       saturated to SIZE_MAX if the true value cannot be represented.
+    ///       Use __uint128_t support (available on GCC/Clang) for accurate
+    ///       values with larger bit counts.
     std::size_t max_objects;
 
     // ========================================================================

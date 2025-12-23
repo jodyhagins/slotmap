@@ -15,6 +15,7 @@
 #include "detail/SlotMap.hpp"
 
 #include <bit>
+#include <concepts>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -22,6 +23,60 @@
 #include <vector>
 
 namespace wjh::slotmap {
+
+// ============================================================================
+// Callback Concepts
+//
+// These concepts provide better compile-time error messages when an invalid
+// callback is passed to use() or for_each(). They check that the callback
+// is invocable with at least one of the supported signatures.
+// ============================================================================
+
+/**
+ * Concept for callbacks accepted by use() (non-const overload).
+ *
+ * Supported signatures (all may return void, bool, or other types):
+ * - F(key_type, T&, Options&)
+ * - F(key_type, T&)
+ * - F(T&, Options&)
+ * - F(T&)
+ */
+template <typename F, typename K, typename V>
+concept UseCallbackC = std::invocable<F, K, V &, Options &> ||
+    std::invocable<F, K, V &> || std::invocable<F, V &, Options &> ||
+    std::invocable<F, V &>;
+
+/**
+ * Concept for callbacks accepted by use() (const overload).
+ *
+ * Supported signatures (all may return void, bool, or other types):
+ * - F(key_type, T const&)
+ * - F(T const&)
+ *
+ * @note Options parameter is not supported on const overloads because
+ *       Options.erase would be meaningless.
+ */
+template <typename F, typename K, typename V>
+concept ConstUseCallbackC = std::invocable<F, K, V const &> ||
+    std::invocable<F, V const &>;
+
+/**
+ * Concept for callbacks accepted by for_each() (non-const overload).
+ *
+ * Same signatures as UseCallbackC. Return type must be void or bool.
+ * - void: continue iteration
+ * - bool: return false to stop, true to continue
+ */
+template <typename F, typename K, typename V>
+concept ForEachCallbackC = UseCallbackC<F, K, V>;
+
+/**
+ * Concept for callbacks accepted by for_each() (const overload).
+ *
+ * Same signatures as ConstUseCallbackC. Return type must be void or bool.
+ */
+template <typename F, typename K, typename V>
+concept ConstForEachCallbackC = ConstUseCallbackC<F, K, V>;
 
 /**
  * A slot map container with O(1) insertion, deletion, and lookup using
@@ -208,6 +263,7 @@ public:
      * @return true/false for void callbacks, std::optional<R> otherwise.
      */
     template <typename F>
+    requires UseCallbackC<F, key_type, mapped_type>
     [[nodiscard]]
     auto use(key_type key, F && func);
 
@@ -225,8 +281,8 @@ public:
      * func. Otherwise, it will be std::nullopt.
      *
      * Supported callback signatures:
-     * - R (key_type, T &)
-     * - R (T &)
+     * - R (key_type, T const &)
+     * - R (T const &)
      *
      * @param key The key to look up
      *
@@ -235,6 +291,7 @@ public:
      * @return true/false for void callbacks, std::optional<R> otherwise.
      */
     template <typename F>
+    requires ConstUseCallbackC<F, key_type, mapped_type>
     [[nodiscard]]
     auto use(key_type key, F && func) const;
 
@@ -365,16 +422,15 @@ public:
      * @note The callback must return void or bool (compile-time enforced).
      */
     template <typename F>
+    requires ForEachCallbackC<F, key_type, mapped_type>
     size_type for_each(F && func);
 
     /**
      * Iterate over all alive elements.
      *
      * Invokes the callable for each alive element. Supported signatures:
-     * - void|bool (key_type, T &, Options &)
-     * - void|bool (key_type, T &)
-     * - void|bool (T &, Options &)
-     * - void|bool (T &)
+     * - void|bool (key_type, T const &)
+     * - void|bool (T const &)
      *
      * @param func Callable to invoke for each element
      *
@@ -386,9 +442,10 @@ public:
      *
      * @note The callback must return void or bool (compile-time enforced).
      *
-     * @note Setting Options.erase is illegal, and asserts in debug builds.
+     * @note Options.erase is not supported on const overloads.
      */
     template <typename F>
+    requires ConstForEachCallbackC<F, key_type, mapped_type>
     size_type for_each(F && func) const;
 
     // ========================================================================
@@ -435,10 +492,6 @@ public:
     [[nodiscard]]
     statistics_type statistics() const noexcept;
 
-    // ========================================================================
-    // Implementation Details (private)
-    // ========================================================================
-
 private:
     using naked_size_type = typename size_type::value_type;
     using naked_index_type = typename index_type::value_type;
@@ -457,6 +510,7 @@ private:
     static void validate_slab_size(size_type slots_per_slab);
     bool allocate_new_slab();
     void initialize_slab_free_list(slab_type * slab, index_type base);
+    void handle_slot_removal(std::size_t, slot_type &, index_type, bool);
     static size_type for_each(auto & self, auto & func);
     static auto use(auto & self, key_type key, auto & func);
 

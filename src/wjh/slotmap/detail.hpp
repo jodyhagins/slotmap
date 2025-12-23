@@ -4,6 +4,9 @@
 // See accompanying file LICENSE or copy at
 // https://opensource.org/licenses/MIT
 // ----------------------------------------------------------------------
+// INTERNAL IMPLEMENTATION HEADER - Do not include directly.
+// Use <wjh/slotmap/SlotMap.hpp> or <wjh/slotmap.hpp> instead.
+// ----------------------------------------------------------------------
 #ifndef WJH_SLOTMAP_CA3F4DEEB84042E584DF898CE8D8E93A
 #define WJH_SLOTMAP_CA3F4DEEB84042E584DF898CE8D8E93A
 
@@ -153,6 +156,9 @@ struct TypeBase
         assert((val | mask) == mask);
     }
 
+    // TODO: Consider making this explicit to enforce stronger type safety.
+    // Implicit conversion is convenient but can mask type errors. Users who
+    // need the raw value can use `.value` directly or an explicit cast.
     constexpr operator value_type () const { return value; }
 
     friend constexpr auto operator <=> (TypeBase x, TypeBase y) = default;

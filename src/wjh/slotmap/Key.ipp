@@ -112,6 +112,15 @@ hash() const noexcept
 }
 
 template <typename T, IndexBits I, VersionBits V, UserBits U>
+constexpr bool
+Key<T, I, V, U>::
+identifies_same_object(Key const & key) const noexcept
+{
+    constexpr auto mask = safe_shift_left(user_mask, user_shift);
+    return (Base::bits_ | mask) == (key.Base::bits_ | mask);
+}
+
+template <typename T, IndexBits I, VersionBits V, UserBits U>
 template <unsigned Bits>
 constexpr Key<T, I, V, U>::value_type
 Key<T, I, V, U>::

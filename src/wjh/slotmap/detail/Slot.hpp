@@ -4,6 +4,9 @@
 // See accompanying file LICENSE or copy at
 // https://opensource.org/licenses/MIT
 // ----------------------------------------------------------------------
+// INTERNAL IMPLEMENTATION HEADER - Do not include directly.
+// Use <wjh/slotmap/SlotMap.hpp> or <wjh/slotmap.hpp> instead.
+// ----------------------------------------------------------------------
 #ifndef WJH_SLOTMAP_210A58D772C142B58C2FDB99480EA93F
 #define WJH_SLOTMAP_210A58D772C142B58C2FDB99480EA93F
 
@@ -207,8 +210,16 @@ public:
      * Check if the slot is alive (has a constructed value).
      *
      * @note When has_embedded_alive_bit is true, this reads from the
-     *       version_bytes_ field (same cache line as the slot). When false,
-     *       it always returns true and the slab's bitmap must be consulted.
+     * version_bytes_ field (same cache line as the slot). When false, it always
+     * returns true and the slab's bitmap must be consulted.
+     *
+     * @warning When has_embedded_alive_bit is false, this ALWAYS returns true
+     * regardless of the actual slot state. This is intentional: it allows
+     * callers to use the same code path for both cases, but callers MUST also
+     * check the slab's bitmap when has_embedded_alive_bit is false. The bitmap
+     * check is the authoritative source of truth; this method is an
+     * optimization for the common case where an embedded alive bit is
+     * available.
      */
     [[nodiscard]]
     constexpr bool is_alive() const noexcept
@@ -217,6 +228,8 @@ public:
             auto version = std::bit_cast<naked_version_type>(version_bytes_);
             return version & alive_bit;
         }
+        // No embedded alive bit: return true and let caller check bitmap.
+        // This enables uniform code paths regardless of configuration.
         return true;
     }
 
