@@ -21,8 +21,7 @@ namespace wjh::slotmap {
  * A type-safe, bit-packed key with compile-time validation
  *
  * @tparam T  The type of the mapped item that this key will be used for. For
- * the purpose of @p Key, this is a phantom type for type, because it is not
- * used.
+ * the purpose of @p Key, this is a phantom type, because it is not used.
  *
  * @tparam I  Number of bits allocated for the index field. Must be
  * greater than 0.
@@ -109,6 +108,7 @@ public:
     // ========================================================================
     // Member types
     // ========================================================================
+
     using value_type = typename Base::value_type;
     using tag_type = typename Base::tag_type;
     using index_type = Index;
@@ -119,6 +119,7 @@ public:
     // ========================================================================
     // Compile-time constants
     // ========================================================================
+
     static constexpr unsigned index_bits = index_bits_value;
     static constexpr unsigned version_bits = version_bits_value;
     static constexpr unsigned user_bits = user_bits_value;
@@ -213,6 +214,7 @@ public:
     [[nodiscard]]
     constexpr std::size_t hash() const noexcept;
 
+private:
     // ========================================================================
     // Hidden friends
     // ========================================================================
@@ -228,6 +230,13 @@ public:
         return key.to_underlying();
     }
 
+    /**
+     * Equality is a comparison of the underlying bits for the key.
+     *
+     * @note  Keys that differ only in user-bits are not the same key, but they
+     * identify the same object because user bits are ignored when looking for
+     * the object.
+     */
     [[nodiscard]]
     friend constexpr bool
     operator == (Key const & x, Key const & y) noexcept
@@ -235,6 +244,13 @@ public:
         return x.Base::bits_ == y.Base::bits_;
     }
 
+    /**
+     * Spaceship is a comparison of the underlying bits for the key.
+     *
+     * @note  Keys that differ only in user-bits are not the same key, but they
+     * identify the same object because user bits are ignored when looking for
+     * the object.
+     */
     [[nodiscard]]
     friend constexpr auto
     operator <=> (Key const & x, Key const & y) noexcept
@@ -242,11 +258,9 @@ public:
         return x.Base::bits_ <=> y.Base::bits_;
     }
 
-private:
+    // Bit masks for each field
     template <unsigned Bits>
     static constexpr value_type make_mask() noexcept;
-
-    // Bit masks for each field
     static constexpr value_type index_mask = make_mask<index_bits_value>();
     static constexpr value_type version_mask = make_mask<version_bits_value>();
     static constexpr value_type user_mask = make_mask<user_bits_value>();
@@ -255,7 +269,6 @@ private:
     static constexpr unsigned version_shift = index_bits_value;
     static constexpr unsigned user_shift = index_bits_value +
         version_bits_value;
-
 
     // Helper to shift left safely (handles 0-bit or full-width shifts)
     static constexpr value_type safe_shift_left(

@@ -9,21 +9,21 @@
 
 namespace wjh::slotmap {
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 BasicSlotMap<TraitsT>::
 BasicSlotMap()
 requires traits_type::is_single_slab
-: slots_per_slab_{end_of_free_list}
+: slots_per_slab_{max_slots}
 { }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 BasicSlotMap<TraitsT>::
 BasicSlotMap()
 requires(not traits_type::is_single_slab)
 : BasicSlotMap(compute_default_slab_size())
 { }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 BasicSlotMap<TraitsT>::
 BasicSlotMap(size_type slots_per_slab)
 requires(not traits_type::is_single_slab)
@@ -33,7 +33,7 @@ requires(not traits_type::is_single_slab)
     validate_slab_size(slots_per_slab);
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 BasicSlotMap<TraitsT>::
 BasicSlotMap(BasicSlotMap const & other)
 requires std::is_copy_constructible_v<mapped_type>
@@ -48,7 +48,7 @@ requires std::is_copy_constructible_v<mapped_type>
     this->storage_clone_from(static_cast<traits_type const &>(other));
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 BasicSlotMap<TraitsT> &
 BasicSlotMap<TraitsT>::
 operator = (BasicSlotMap const & other)
@@ -62,7 +62,7 @@ requires std::is_copy_constructible_v<mapped_type>
     return *this;
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 BasicSlotMap<TraitsT>::
 BasicSlotMap(BasicSlotMap && other) noexcept
 : traits_type{std::move(other)}
@@ -80,7 +80,7 @@ BasicSlotMap(BasicSlotMap && other) noexcept
     other.next_slab_base_index_ = 0;
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 BasicSlotMap<TraitsT> &
 BasicSlotMap<TraitsT>::
 operator = (BasicSlotMap && other) noexcept
@@ -104,7 +104,7 @@ operator = (BasicSlotMap && other) noexcept
     return *this;
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 bool
 BasicSlotMap<TraitsT>::
 is_empty() const noexcept
@@ -112,7 +112,7 @@ is_empty() const noexcept
     return size_ == 0;
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 BasicSlotMap<TraitsT>::size_type
 BasicSlotMap<TraitsT>::
 size() const noexcept
@@ -120,18 +120,14 @@ size() const noexcept
     return size_type(size_);
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 constexpr BasicSlotMap<TraitsT>::size_type
 BasicSlotMap<TraitsT>::
 compute_default_slab_size() noexcept
 {
-    constexpr size_type max_slots = end_of_free_list;
-
     // Use a single slab by default if it fits in 2MB.
     constexpr std::size_t limit = 2 * 1024 * 1024;
-    if (auto n = slab_type::total_bytes_needed(size_type(max_slots));
-        n <= limit)
-    {
+    if (auto n = slab_type::total_bytes_needed(max_slots); n <= limit) {
         return max_slots;
     }
 
@@ -144,7 +140,7 @@ compute_default_slab_size() noexcept
     return size_type(std::bit_floor(max_slots.value));
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 void
 BasicSlotMap<TraitsT>::
 validate_slab_size(size_type slots_per_slab)
@@ -160,21 +156,21 @@ validate_slab_size(size_type slots_per_slab)
     }
 
     // Ensure slab size doesn't exceed the addressable index space
-    if (slots_per_slab > end_of_free_list) {
+    if (slots_per_slab > max_slots) {
         std::stringstream strm;
         strm << "SlotMap: slots_per_slab (" << slots_per_slab.value
-            << ") exceeds maximum size (" << end_of_free_list.value << ")";
+            << ") exceeds maximum size (" << max_slots.value << ")";
         throw std::invalid_argument(strm.str());
     }
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 bool
 BasicSlotMap<TraitsT>::
 allocate_new_slab()
 {
     // Check if we've exhausted the index space
-    if (size_type(next_slab_base_index_) >= end_of_free_list) {
+    if (size_type(next_slab_base_index_) >= max_slots) {
         return false;
     }
 
@@ -209,7 +205,7 @@ allocate_new_slab()
     return true;
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 void
 BasicSlotMap<TraitsT>::
 initialize_slab_free_list(slab_type * slab, index_type base)
@@ -232,7 +228,7 @@ initialize_slab_free_list(slab_type * slab, index_type base)
     free_list_head_ = size_type(base);
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 template <typename... Args>
 BasicSlotMap<TraitsT>::key_type
 BasicSlotMap<TraitsT>::
@@ -265,7 +261,7 @@ try_emplace(Args &&... args)
     return key_type(idx, ver, user_type{});
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 template <typename... Args>
 BasicSlotMap<TraitsT>::key_type
 BasicSlotMap<TraitsT>::
@@ -279,7 +275,7 @@ emplace(Args &&... args)
     return key;
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 bool
 BasicSlotMap<TraitsT>::
 erase(key_type key)
@@ -312,7 +308,7 @@ erase(key_type key)
                         // space
                         auto const new_base = next_slab_base_index_;
                         if (size_type(new_base) + size_type(slots_per_slab_) >
-                            end_of_free_list)
+                            max_slots)
                         {
                             return std::nullopt;
                         }
@@ -339,7 +335,7 @@ erase(key_type key)
     return false;
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 std::optional<typename BasicSlotMap<TraitsT>::mapped_type>
 BasicSlotMap<TraitsT>::
 pop(key_type key)
@@ -374,7 +370,7 @@ requires std::is_move_constructible_v<mapped_type>
                             std::tuple<std::size_t, index_type, size_type>> {
                         auto const new_base = next_slab_base_index_;
                         if (size_type(new_base) + size_type(slots_per_slab_) >
-                            end_of_free_list)
+                            max_slots)
                         {
                             return std::nullopt;
                         }
@@ -532,17 +528,13 @@ is_valid(VersionT version, SlotT const & slot, SlabT const * slab, IndexT index)
 
 } // namespace detail
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 auto
 BasicSlotMap<TraitsT>::
 use(auto & self, key_type key, auto & func)
 {
     using self_type = std::remove_reference_t<decltype(self)>;
     using Callback = detail::UseCallback<self_type, decltype(func)>;
-    using Return = std::conditional_t<
-        std::is_void_v<typename Callback::result_type>,
-        bool,
-        std::optional<typename Callback::result_type>>;
     auto callback = Callback(self, key);
     auto const key_idx = key.index();
 
@@ -558,10 +550,16 @@ use(auto & self, key_type key, auto & func)
             return callback(func, key, slot.value());
         }
     }
+
+    using SlotValue = std::conditional_t<
+        std::is_const_v<self_type>,
+        mapped_type const,
+        mapped_type>;
+    using Return = decltype(callback(func, key, std::declval<SlotValue &>()));
     return Return{};
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 template <typename F>
 [[nodiscard]]
 auto
@@ -571,7 +569,7 @@ use(key_type key, F && func)
     return use(*this, key, func);
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 template <typename F>
 [[nodiscard]]
 auto
@@ -581,7 +579,7 @@ use(key_type key, F && func) const
     return use(*this, key, func);
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 bool
 BasicSlotMap<TraitsT>::
 contains(key_type key) const
@@ -606,7 +604,7 @@ invoke_for_each(F & func, KeyT key, ValT & val, [[maybe_unused]] Options & opts)
 }
 } // namespace detail
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 template <typename F>
 BasicSlotMap<TraitsT>::size_type
 BasicSlotMap<TraitsT>::
@@ -615,7 +613,7 @@ for_each(F && func)
     return for_each(*this, func);
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 template <typename F>
 BasicSlotMap<TraitsT>::size_type
 BasicSlotMap<TraitsT>::
@@ -624,7 +622,7 @@ for_each(F && func) const
     return for_each(*this, func);
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 BasicSlotMap<TraitsT>::size_type
 BasicSlotMap<TraitsT>::
 for_each(auto & self, auto & func)
@@ -677,11 +675,15 @@ for_each(auto & self, auto & func)
     return size_type(visited);
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 void
 BasicSlotMap<TraitsT>::
 swap(BasicSlotMap & other) noexcept
 {
+    if (this == std::addressof(other)) {
+        return;
+    }
+
     using std::swap;
     // Swap the storage policy (handles slabs_ and any policy-specific state)
     swap(static_cast<traits_type &>(*this), static_cast<traits_type &>(other));
@@ -693,7 +695,7 @@ swap(BasicSlotMap & other) noexcept
     swap(next_slab_base_index_, other.next_slab_base_index_);
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 void
 BasicSlotMap<TraitsT>::
 clear()
@@ -743,7 +745,7 @@ clear()
     size_ = 0;
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 void
 BasicSlotMap<TraitsT>::
 reset()
@@ -756,7 +758,7 @@ reset()
     next_slab_base_index_ = 0;
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 void
 BasicSlotMap<TraitsT>::
 reserve(size_type n)
@@ -772,7 +774,7 @@ reserve(size_type n)
     }
 }
 
-template <typename TraitsT>
+template <TraitsC TraitsT>
 BasicSlotMap<TraitsT>::statistics_type
 BasicSlotMap<TraitsT>::
 statistics() const noexcept

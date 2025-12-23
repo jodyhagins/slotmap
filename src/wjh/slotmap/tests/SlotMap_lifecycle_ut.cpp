@@ -121,27 +121,38 @@ TEST_CASE("SlotMap: explicit slab size construction")
 
 TEST_CASE("SlotMap: constants")
 {
-    SUBCASE("end_of_free_list is one past 1 << numbits") {
+    SUBCASE("max_simultaneous_objects is one past 1 << numbits") {
         using Map16 = SlotMap<Key<int, 16_ib, 16_vb>>;
-        CHECK(Map16::end_of_free_list.value == 0x10000u); // 2^16
+        CHECK(Map16::max_simultaneous_objects.value == 0x10000u); // 2^16
 
         using Map8 = SlotMap<Key<int, 8_ib, 8_vb, 16_ub>>;
-        CHECK(Map8::end_of_free_list.value == 0x100u); // 2^8
+        CHECK(Map8::max_simultaneous_objects.value == 0x100u); // 2^8
 
         using Map4 = SlotMap<Key<int, 4_ib, 4_vb, 24_ub>>;
-        CHECK(Map4::end_of_free_list.value == 0x10u); // 2^4
+        CHECK(Map4::max_simultaneous_objects.value == 0x10u); // 2^4
     }
 
-    SUBCASE("end_of_free_list fits in size_type but not index_type") {
-        // Verify the design: end_of_free_list can be stored in size_type
-        // but would overflow index_type
+    SUBCASE("max_simultaneous_objects fits in size_type but not index_type") {
+        // Verify the design: max_simultaneous_objects can be stored in
+        // size_type but would overflow index_type
 
         using Map16 = SlotMap<Key<int, 16_ib, 16_vb>>;
         static_assert(sizeof(Map16::size_type) * 8 >= 17); // Need 17 bits
         static_assert(sizeof(Map16::index_type) * 8 >= 16); // Only 16 bits
 
         // The sentinel value should be exactly 2^IndexBits
-        CHECK(Map16::end_of_free_list.value == (1u << 16));
+        CHECK(Map16::max_simultaneous_objects.value == (1u << 16));
+    }
+
+    SUBCASE("max_total_objects is one 2^IndexBits + 2^VersionBits - 1") {
+        using Map16 = SlotMap<Key<int, 16_ib, 16_vb>>;
+        CHECK(Map16::max_total_objects.value == 0xffffffffu);
+
+        using Map8 = SlotMap<Key<int, 8_ib, 8_vb, 16_ub>>;
+        CHECK(Map8::max_total_objects.value == 0xffffu);
+
+        using Map4 = SlotMap<Key<int, 4_ib, 4_vb, 24_ub>>;
+        CHECK(Map4::max_total_objects.value == 0xffu);
     }
 }
 
@@ -151,12 +162,12 @@ TEST_CASE("SlotMap: free list sentinel storage in Slot")
     // next field. This is critical for the free list to work correctly.
     //
     // The Slab's slot_type uses size_type (not index_type) for the next-link,
-    // which allows storing end_of_free_list (one past max index).
+    // which allows storing max_simultaneous_objects (one past max index).
     using Map = SlotMap<Key<int, 8_ib, 8_vb, 16_ub>>;
 
-    // end_of_free_list = 256 (0x100), which doesn't fit in uint8_t (index_type)
-    // but does fit in uint16_t (size_type)
-    constexpr auto sentinel = Map::end_of_free_list;
+    // max_simultaneous_objects = 256 (0x100), which doesn't fit in uint8_t
+    // (index_type) but does fit in uint16_t (size_type)
+    constexpr auto sentinel = Map::max_simultaneous_objects;
     CHECK(sentinel.value == 0x100u);
 
     SUBCASE("size_type slot can store sentinel") {

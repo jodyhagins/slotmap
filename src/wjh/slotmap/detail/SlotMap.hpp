@@ -7,6 +7,8 @@
 #ifndef WJH_SLOTMAP_E253A0A968334A30AADC240EA20ABEF2
 #define WJH_SLOTMAP_E253A0A968334A30AADC240EA20ABEF2
 
+#include "Slab.hpp"
+
 #include <tuple>
 
 namespace wjh::slotmap {
@@ -534,6 +536,19 @@ struct helper<KeyT, vs...>
 
 template <typename T, auto... vs>
 using helper_t = typename helper<T, vs...>::type;
+
+template <typename SizeT, typename KeyT>
+constexpr SizeT
+max_total_objects()
+{
+    using Int = typename SizeT::value_type;
+    if constexpr (KeyT::user_bits == 0u) {
+        return SizeT(Int(-1));
+    } else {
+        return SizeT(
+            Int((Int(1) << (KeyT::index_bits + KeyT::version_bits)) - 1));
+    }
+}
 
 } // namespace detail
 } // namespace wjh::slotmap

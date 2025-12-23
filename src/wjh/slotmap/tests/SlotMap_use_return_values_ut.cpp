@@ -764,7 +764,7 @@ TEST_SUITE("SlotMap::use - Edge Cases")
         REQUIRE_FALSE(result.has_value());
     }
 
-    TEST_CASE("callback returns optional")
+    TEST_CASE("callback returns optional int")
     {
         // Nested optional: callback returns optional<int>
         TestMap map;
@@ -782,8 +782,69 @@ TEST_SUITE("SlotMap::use - Edge Cases")
             "should be optional<optional<int>>");
 
         REQUIRE(result.has_value()); // Outer optional
-        REQUIRE(result->has_value()); // Inner optional
-        CHECK(**result == 84);
+        CHECK(*result == 84);
+    }
+
+    struct MoveMe
+    {
+        int i;
+        inline static int times_deleted_with_minus_1 = 0;
+        inline static int time_deleted = 0;
+
+        MoveMe(int v)
+        : i(v)
+        { }
+
+        MoveMe(MoveMe && that)
+        : i(std::exchange(that.i, -1))
+        { }
+
+        MoveMe & operator = (MoveMe && that)
+        {
+            i = std::exchange(that.i, -1);
+            return *this;
+        }
+
+        ~MoveMe()
+        {
+            ++time_deleted;
+            times_deleted_with_minus_1 += (i < 0);
+        }
+    };
+
+    TEST_CASE("callback returns optional")
+    {
+        using namespace wjh::slotmap;
+        SlotMap<MoveMe, IndexBits(10), VersionBits(6)> map;
+        std::vector<decltype(map)::key_type> keys;
+        for (int i = 0; i < 10; ++i) {
+            keys.push_back(map.emplace(i));
+        }
+        CHECK(0 == MoveMe::time_deleted);
+        CHECK(0 == MoveMe::times_deleted_with_minus_1);
+
+        for (std::size_t i = 0u; i < keys.size(); ++i) {
+            auto result = map.use(
+                keys[i],
+                [](MoveMe & val, Options & opts) -> std::optional<MoveMe> {
+                    if ((val.i % 3) == 0) {
+                        opts.erase = true;
+                        return std::move(val);
+                    }
+                    return std::nullopt;
+                });
+            static_assert(std::is_same_v<
+                          decltype(result),
+                          std::optional<std::optional<MoveMe>>>);
+
+            REQUIRE(result.has_value());
+            if ((i % 3) == 0) {
+                REQUIRE(result->has_value());
+                CHECK((*result)->i == i);
+            } else {
+                CHECK(not result->has_value());
+            }
+        }
     }
 
 } // TEST_SUITE

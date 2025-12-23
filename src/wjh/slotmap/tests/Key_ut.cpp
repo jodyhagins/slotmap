@@ -300,7 +300,7 @@ TEST_CASE("Key 16-bit: equality comparison")
     }
 
     SUBCASE("keys with different user are not equal") {
-        constexpr auto k1 = make_key<void, 10_ib, 4_vb, 2_ub>(100, 5, 1);
+        constexpr auto k1 = make_key<void, 10_ib, 4_vb, 2_ub>(100, 5, 0);
         constexpr auto k2 = make_key<void, 10_ib, 4_vb, 2_ub>(100, 5, 2);
         static_assert(k1 != k2);
 

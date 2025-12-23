@@ -8,6 +8,7 @@
 #define WJH_SLOTMAP_E2D8A15AF47745D2A33C7CBE9DB11D95
 
 #include "Key.hpp"
+#include "Traits.hpp"
 #include "types.hpp"
 
 #include "detail/Slab.hpp"
@@ -23,56 +24,28 @@
 namespace wjh::slotmap {
 
 /**
- * Traits for SlotMap configuration.
+ * A slot map container with O(1) insertion, deletion, and lookup using
+ * persistent unique keys.
  *
- * @tparam KeyT The key type (must satisfy KeyC concept)
- * @tparam nslots The slots per slab configuration
- * @tparam alive_bit Whether to use an available live bit to speed up lookup.
- */
-template <KeyC KeyT, SlotsPerSlab nslots, UseAliveBitForLookup alive_bit>
-struct Traits
-: detail::storage_policy_t<KeyT, nslots, alive_bit>
-{
-protected:
-    using storage_policy = detail::storage_policy_t<KeyT, nslots, alive_bit>;
-    using storage_policy::storage_policy;
-
-public:
-    using key_type = KeyT;
-    using mapped_type = typename key_type::tag_type;
-    using index_type = typename key_type::index_type;
-    using version_type = typename key_type::version_type;
-    using user_type = typename key_type::user_type;
-
-    using naked_size_type = typename storage_policy::naked_size_type;
-
-    static constexpr auto slots_per_slab = nslots;
-    static constexpr bool allow_alive_bit = bool(alive_bit);
-    static constexpr bool use_alive_bit_for_lookup =
-        detail::has_alive_bit<Traits>();
-};
-
-/**
- * A concept for any instantiation of the class template Traits, or anything
- * derived from an instantiation of Traits.
- */
-template <typename T>
-concept TraitsC = detail::TraitsC<T>;
-
-/**
- * A high-performance slot map container with O(1) insertion, deletion,
- * and lookup using persistent unique keys.
+ * Use cases are broad, but in general, it is most useful for managing objects
+ * by identity. The classic example (for me anyway) is a matching engine or
+ * order entry gateway. For most other people, it might be a game that contains
+ * a bunch of entities or a class that manages a bunch of timers.
+ *
+ * The biggest downsides are that the keys are generated (you don't get to pick
+ * them), and there is a fixed limit on the number of objects that can exist at
+ * any single point in time.
  *
  * @tparam TraitsT  A set of traits with types and policies for this SlotMap
  * instantiation.
  */
-template <typename TraitsT>
+template <TraitsC TraitsT>
 class BasicSlotMap
 : detail::traits_t<TraitsT>
 {
 public:
     // ========================================================================
-    // Type Aliases
+    // Types and Type Aliases
     // ========================================================================
 
     using traits_type = detail::traits_t<TraitsT>;
@@ -86,17 +59,45 @@ public:
     using slot_type = typename slab_type::slot_type;
     using statistics_type = Statistics;
 
+    struct TotalSize
+    : detail::TypeBase<key_type::index_bits + key_type::version_bits, TotalSize>
+    {
+        using detail::TypeBase<
+            key_type::index_bits + key_type::version_bits,
+            TotalSize>::TypeBase;
+    };
+
     // ========================================================================
     // Constants
     // ========================================================================
 
     /**
-     * Sentinel value marking end of free list.
+     * The maximum number of objects that can exist in the map at any given
+     * time.
      *
-     * This value is one past the maximum valid index, which fits in size_type
-     * (which has IndexBits + 1 bits) but cannot be a valid index_type.
+     * This is 2^IndexBits.
+     *
+     * For example, if there are 3 IndexBits, then there are eight valid index
+     * values: 0b000, 0b001, 0b010, 0b011, 0b100, 0b101, 0b110, and 0b111.
      */
-    static constexpr size_type end_of_free_list = ++size_type(index_type::mask);
+    static constexpr size_type max_slots = ++size_type(index_type::mask);
+    static constexpr size_type max_simultaneous_objects = max_slots;
+
+    /**
+     * The maximum number of unique objects that can be inserted into the map
+     * over its lifetime.
+     *
+     * This is 2^IndexBits * 2^VersionBits - 1.
+     *
+     * For example, if there are 3 IndexBits and 12 VersionBits, then there can
+     * be eight unique index values (and only 8 in use at any given time). There
+     * can be 2^VersionBits versions (0b000000000000 to 0b111111111111).
+     * However, index 0b000 always starts with version 1 instead of version 0,
+     * so it will never get version 0. Thus, 2^IndexBits * 2^VersionBits - 1, or
+     * 2^(IndexBits + VersionBits) - 1.
+     */
+    static constexpr TotalSize max_total_objects =
+        detail::max_total_objects<TotalSize, key_type>();
 
     // ========================================================================
     // Constructors and Destructor
@@ -125,8 +126,10 @@ public:
      * can be customized. Single-slab configurations always use all slots.
      *
      * @param slots_per_slab Number of slots per slab (must be power of 2)
+     *
      * @throws std::invalid_argument if slots_per_slab is not a power of 2
      *         or exceeds the maximum index value
+     *
      * @throws std::bad_alloc if initial slab allocation fails
      */
     explicit BasicSlotMap(size_type slots_per_slab)
@@ -139,7 +142,9 @@ public:
      * source will be valid in the copy.
      *
      * @param other The SlotMap to copy from
+     *
      * @throws std::bad_alloc if allocation fails
+     *
      * @throws Any exception from T's copy constructor
      *
      * @note Only available if T is copy constructible
@@ -153,8 +158,11 @@ public:
      * Replaces contents with a deep copy of other using copy-and-swap.
      *
      * @param other The SlotMap to copy from
+     *
      * @return Reference to this
+     *
      * @throws std::bad_alloc if allocation fails
+     *
      * @throws Any exception from T's copy constructor
      *
      * @note Only available if T is copy constructible
@@ -174,33 +182,58 @@ public:
     /**
      * Access an element by key with callback.
      *
-     * If key is valid and refers to an alive element, invokes func(value) and
-     * returns the result. The callback can:
-     * - Return void: use() returns bool (true if found, false otherwise)
-     * - Return R: use() returns std::optional<R> (value if found, nullopt
-     *             otherwise)
+     * If key is valid and refers to an alive element, invokes func(value).
+     *
+     * If @p func returns void, the return type of @p use will be bool, where
+     * true indicates that the object was found, and @p func called.
+     *
+     * If @p func returns anything else, the return type of @p use will be
+     * std::optional<R> where R is the return type of @p func. If @p key is
+     * found, the optional will be truthy, with the result of having called @p
+     * func. Otherwise, it will be std::nullopt.
      *
      * Supported callback signatures:
-     * - R (key_type, T &, Options &) [non-const only]
+     * - R (key_type, T &, Options &)
      * - R (key_type, T &)
-     * - R (T &, Options &) [non-const only]
+     * - R (T &, Options &)
      * - R (T &)
      *
-     * When Options is available (non-const SlotMap), you can:
+     * When Options is used, you can:
      * - Set options.erase = true to erase the element after the callback
      *
      * @param key The key to look up
-     * @param func Callable to invoke if key is valid
-     * @return For void callbacks: bool (true if found)
-     *         For non-void callbacks: std::optional<R> (result if found,
-     * nullopt otherwise)
      *
-     * @note The const overload does not support Options parameter.
+     * @param func Callable to invoke if key is valid
+     *
+     * @return true/false for void callbacks, std::optional<R> otherwise.
      */
     template <typename F>
     [[nodiscard]]
     auto use(key_type key, F && func);
 
+    /**
+     * Access an element by key with callback.
+     *
+     * If key is valid and refers to an alive element, invokes func(value).
+     *
+     * If @p func returns void, the return type of @p use will be bool, where
+     * true indicates that the object was found, and @p func called.
+     *
+     * If @p func returns anything else, the return type of @p use will be
+     * std::optional<R> where R is the return type of @p func. If @p key is
+     * found, the optional will be truthy, with the result of having called @p
+     * func. Otherwise, it will be std::nullopt.
+     *
+     * Supported callback signatures:
+     * - R (key_type, T &)
+     * - R (T &)
+     *
+     * @param key The key to look up
+     *
+     * @param func Callable to invoke if key is valid
+     *
+     * @return true/false for void callbacks, std::optional<R> otherwise.
+     */
     template <typename F>
     [[nodiscard]]
     auto use(key_type key, F && func) const;
@@ -222,8 +255,11 @@ public:
      * Construct a new element in-place.
      *
      * @param args Arguments to forward to T's constructor
+     *
      * @return A valid key for the new element (never null)
+     *
      * @throws std::length_error if no slots available (capacity exhausted)
+     *
      * @throws Any exception thrown by T's constructor (strong guarantee)
      */
     template <typename... Args>
@@ -234,8 +270,10 @@ public:
      * Try to construct a new element in-place.
      *
      * @param args Arguments to forward to T's constructor
+     *
      * @return A valid key for the new element, or null key if no slots
      * available
+     *
      * @throws Any exception thrown by T's constructor (strong guarantee)
      */
     template <typename... Args>
@@ -250,6 +288,7 @@ public:
      * slab becomes exhausted.
      *
      * @param key The key of the element to erase
+     *
      * @return true if an element was erased, false otherwise
      */
     bool erase(key_type key);
@@ -261,6 +300,7 @@ public:
      * and frees or retires the slot.
      *
      * @param key The key of the element to remove
+     *
      * @return The moved element wrapped in optional, or nullopt if key invalid
      *
      * @note Only available if T is move constructible
@@ -285,6 +325,7 @@ public:
      * the free list. Memory is retained for reuse.
      *
      * @post is_empty() == true, size() == 0
+     *
      * @note Keys that were valid before clear() are now invalid (version
      * mismatch)
      */
@@ -314,6 +355,7 @@ public:
      * - void|bool (T &)
      *
      * @param func Callable to invoke for each element
+     *
      * @return Number of elements visited
      *
      * Early exit can be achieved in two ways:
@@ -321,11 +363,31 @@ public:
      * - Return false from a bool-returning callback (return true to continue)
      *
      * @note The callback must return void or bool (compile-time enforced).
-     * @note The const overload does not support Options; erase asserts.
      */
     template <typename F>
     size_type for_each(F && func);
 
+    /**
+     * Iterate over all alive elements.
+     *
+     * Invokes the callable for each alive element. Supported signatures:
+     * - void|bool (key_type, T &, Options &)
+     * - void|bool (key_type, T &)
+     * - void|bool (T &, Options &)
+     * - void|bool (T &)
+     *
+     * @param func Callable to invoke for each element
+     *
+     * @return Number of elements visited
+     *
+     * Early exit can be achieved in two ways:
+     * - Set options.stop = true within the callback
+     * - Return false from a bool-returning callback (return true to continue)
+     *
+     * @note The callback must return void or bool (compile-time enforced).
+     *
+     * @note Setting Options.erase is illegal, and asserts in debug builds.
+     */
     template <typename F>
     size_type for_each(F && func) const;
 
@@ -382,6 +444,7 @@ private:
     using naked_index_type = typename index_type::value_type;
 
     static constexpr bool is_single_slab = traits_type::is_single_slab;
+    static constexpr size_type end_of_free_list = max_slots;
 
     size_type free_list_head_ = end_of_free_list;
     naked_size_type size_ = 0;
@@ -396,6 +459,8 @@ private:
     void initialize_slab_free_list(slab_type * slab, index_type base);
     static size_type for_each(auto & self, auto & func);
     static auto use(auto & self, key_type key, auto & func);
+
+    friend void swap(BasicSlotMap & a, BasicSlotMap & b) noexcept { a.swap(b); }
 };
 
 /**
