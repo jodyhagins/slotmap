@@ -200,7 +200,8 @@ allocate_new_slab()
     }
 
     *storage_slot = std::move(slab);
-    next_slab_base_index_ += slots_per_slab_;
+    next_slab_base_index_ = static_cast<naked_size_type>(
+        next_slab_base_index_ + slots_per_slab_);
 
     return true;
 }

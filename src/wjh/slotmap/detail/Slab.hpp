@@ -451,7 +451,7 @@ public:
         dead_count_ = 0;
         auto const end = this->slots() + slots_per_slab_ - 1;
         for (auto slot = this->slots(); slot != end; ++slot) {
-            first_index.value += 1;
+            ++first_index.value;
             slot->set_version(version_type{});
             slot->set_next(first_index);
         }
