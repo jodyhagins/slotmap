@@ -85,7 +85,7 @@ TEST_SUITE("SlotMap::use with Options")
                 opts.erase = true;
             });
 
-            CHECK(values_seen.size() == 1);
+            CHECK(values_seen.size() == std::uint8_t(1));
             CHECK(values_seen[0] == 100);
             CHECK(not map.contains(k1));
             CHECK(map.contains(k2)); // k2 still exists

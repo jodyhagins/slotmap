@@ -1070,7 +1070,7 @@ TEST_CASE("SlotMap 16-bit: different bit configurations")
 
         auto key = map.emplace(42);
         CHECK(not key.is_null());
-        CHECK(key.user() == 0); // User bits default to 0
+        CHECK(key.user() == std::uint8_t(0)); // User bits default to 0
     }
 }
 

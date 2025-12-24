@@ -15,8 +15,8 @@
 
 TEST_CASE("umbrella header provides Key")
 {
-    using Key = wjh::slotmap::Key<int, wjh::slotmap::IndexBits(16),
-                                  wjh::slotmap::VersionBits(16)>;
+    using Key = wjh::slotmap::
+        Key<int, wjh::slotmap::IndexBits(16), wjh::slotmap::VersionBits(16)>;
     auto k = Key::null();
     CHECK(k.is_null());
 }
@@ -35,10 +35,10 @@ TEST_CASE("version header provides version constants")
     CHECK(wjh::slotmap::version_minor >= 0);
     CHECK(wjh::slotmap::version_patch >= 0);
     CHECK(wjh::slotmap::version_string != nullptr);
-    CHECK(wjh::slotmap::version ==
-          wjh::slotmap::version_major * 10000 +
-          wjh::slotmap::version_minor * 100 +
-          wjh::slotmap::version_patch);
+    CHECK(
+        wjh::slotmap::version ==
+        wjh::slotmap::version_major * 10000 +
+            wjh::slotmap::version_minor * 100 + wjh::slotmap::version_patch);
 }
 
 TEST_CASE("version check macro works")

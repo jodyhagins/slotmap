@@ -81,8 +81,8 @@ TEST_CASE("Slot: basic types and construction")
         buf.fill(std::byte(0xa7));
         auto & slot = *::new (static_cast<void *>(buf.data())) Slot();
 
-        REQUIRE(slot.version() == 0);
-        REQUIRE(slot.next() == 0);
+        REQUIRE(slot.version() == std::uint8_t(0));
+        REQUIRE(slot.next() == std::uint8_t(0));
     }
 
     SUBCASE("different type configurations compile") {
@@ -90,15 +90,15 @@ TEST_CASE("Slot: basic types and construction")
         Slot<int, std::uint32_t, std::uint32_t> slot32{};
         Slot<int, std::uint64_t, std::uint64_t> slot64{};
 
-        REQUIRE(slot16.version() == 0);
-        REQUIRE(slot32.version() == 0);
-        REQUIRE(slot64.version() == 0);
+        REQUIRE(slot16.version() == std::uint8_t(0));
+        REQUIRE(slot32.version() == std::uint8_t(0));
+        REQUIRE(slot64.version() == std::uint8_t(0));
     }
 
     SUBCASE("slot with non-trivial type") {
         Slot<std::string, std::uint32_t, std::uint32_t> slot{};
 
-        REQUIRE(slot.version() == 0);
+        REQUIRE(slot.version() == std::uint8_t(0));
     }
 }
 
@@ -108,7 +108,7 @@ TEST_CASE("Slot: version access")
 
     SUBCASE("set and get version") {
         slot.set_version(42);
-        REQUIRE(slot.version() == 42);
+        REQUIRE(slot.version() == std::uint8_t(42));
     }
 
     SUBCASE("version can be set to max value") {
@@ -119,8 +119,8 @@ TEST_CASE("Slot: version access")
     SUBCASE("version changes are independent of next") {
         slot.set_next(100);
         slot.set_version(42);
-        REQUIRE(slot.next() == 100);
-        REQUIRE(slot.version() == 42);
+        REQUIRE(slot.next() == std::uint8_t(100));
+        REQUIRE(slot.version() == std::uint8_t(42));
     }
 }
 
@@ -146,7 +146,7 @@ TEST_CASE("Slot: emplace and value access")
 
         auto & ref = slot.emplace(42);
         REQUIRE(ref == 42);
-        REQUIRE(slot.value() == 42);
+        REQUIRE(slot.value() == std::uint8_t(42));
 
         slot.destroy();
     }
@@ -181,7 +181,7 @@ TEST_CASE("Slot: emplace and value access")
 
         slot.emplace(10);
         slot.value() = 20;
-        REQUIRE(slot.value() == 20);
+        REQUIRE(slot.value() == std::uint8_t(20));
 
         slot.destroy();
     }
@@ -191,7 +191,7 @@ TEST_CASE("Slot: emplace and value access")
         slot.emplace(42);
 
         auto const & const_slot = slot;
-        REQUIRE(const_slot.value() == 42);
+        REQUIRE(const_slot.value() == std::uint8_t(42));
 
         slot.destroy();
     }
@@ -234,21 +234,21 @@ TEST_CASE("Slot: lifecycle - free to alive to free")
     // Initially free
     slot.set_version(0);
     slot.set_next(100);
-    REQUIRE(slot.version() == 0);
-    REQUIRE(slot.next() == 100);
+    REQUIRE(slot.version() == std::uint8_t(0));
+    REQUIRE(slot.next() == std::uint8_t(100));
 
     // Emplace - now alive
     slot.set_version(1);
     slot.emplace("test value");
-    REQUIRE(slot.version() == 1);
+    REQUIRE(slot.version() == std::uint8_t(1));
     REQUIRE(slot.value() == "test value");
 
     // Destroy and return to free list
     slot.destroy();
     slot.set_version(2);
     slot.set_next(200);
-    REQUIRE(slot.version() == 2);
-    REQUIRE(slot.next() == 200);
+    REQUIRE(slot.version() == std::uint8_t(2));
+    REQUIRE(slot.next() == std::uint8_t(200));
 }
 
 TEST_CASE("Slot: version survives emplace/destroy cycle")
@@ -260,21 +260,21 @@ TEST_CASE("Slot: version survives emplace/destroy cycle")
     slot.emplace(100);
 
     // Version should still be accessible (it's stored separately)
-    REQUIRE(slot.version() == 42);
+    REQUIRE(slot.version() == std::uint8_t(42));
 
     slot.destroy();
 
     // Version should survive destroy
-    REQUIRE(slot.version() == 42);
+    REQUIRE(slot.version() == std::uint8_t(42));
 }
 
 // ============================================================================
 // Property-Based Tests
 // ============================================================================
 #ifdef __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wexit-time-destructors"
-#pragma clang diagnostic ignored "-Wglobal-constructors"
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wexit-time-destructors"
+    #pragma clang diagnostic ignored "-Wglobal-constructors"
 #endif
 template <std::unsigned_integral IntT>
 auto const gen_uint_no_high_bit =
@@ -284,7 +284,7 @@ auto const gen_uint_no_high_bit =
         return not (x & hibit);
     });
 #ifdef __clang__
-#pragma clang diagnostic pop
+    #pragma clang diagnostic pop
 #endif
 
 TEST_CASE("Slot: property-based version round-trip")
@@ -392,8 +392,8 @@ TEST_CASE("Slot: edge cases with different index/version types")
         slot.set_version(255);
         slot.set_next(255);
 
-        REQUIRE(slot.version() == 255);
-        REQUIRE(slot.next() == 255);
+        REQUIRE(slot.version() == std::uint8_t(255));
+        REQUIRE(slot.next() == std::uint8_t(255));
     }
 
     SUBCASE("16-bit index and version") {
@@ -402,8 +402,8 @@ TEST_CASE("Slot: edge cases with different index/version types")
         slot.set_version(65535);
         slot.set_next(65535);
 
-        REQUIRE(slot.version() == 65535);
-        REQUIRE(slot.next() == 65535);
+        REQUIRE(slot.version() == std::uint16_t(65535));
+        REQUIRE(slot.next() == std::uint16_t(65535));
     }
 
     SUBCASE("64-bit index and version") {
@@ -420,8 +420,8 @@ TEST_CASE("Slot: edge cases with different index/version types")
 TEST_CASE("Slot: value type larger than index type")
 {
 #ifdef __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunsafe-buffer-usage"
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wunsafe-buffer-usage"
 #endif
     struct LargeValue
     {
@@ -450,7 +450,7 @@ TEST_CASE("Slot: value type larger than index type")
 
     slot.destroy();
 #ifdef __clang__
-#pragma clang diagnostic pop
+    #pragma clang diagnostic pop
 #endif
 }
 
@@ -465,7 +465,7 @@ TEST_CASE("Slot: value type smaller than index type")
 
     // After destroy, we can use as free-list node
     slot.set_next(12345678901234ULL);
-    REQUIRE(slot.next() == 12345678901234ULL);
+    REQUIRE(slot.next() == std::uint64_t(12345678901234));
 }
 
 } // anonymous namespace

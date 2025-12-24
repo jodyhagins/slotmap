@@ -352,7 +352,7 @@ TEST_CASE("Single-slab SlotMap: swap")
     // Check map2 has the original map1 values
     std::vector<int> map2_vals;
     map2.for_each([&](int v) { map2_vals.push_back(v); });
-    CHECK(map2_vals.size() == 2);
+    CHECK(map2_vals.size() == std::uint8_t(2));
     std::sort(map2_vals.begin(), map2_vals.end());
     CHECK(map2_vals[0] == 111);
     CHECK(map2_vals[1] == 222);

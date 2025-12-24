@@ -562,7 +562,7 @@ TEST_CASE("SlotMap: pop")
         auto result = map.pop(key);
 
         CHECK(result.has_value());
-        CHECK(result.value() == 42);
+        CHECK(result.value() == std::uint8_t(42));
         CHECK(map.is_empty());
         CHECK(not map.contains(key));
     }
@@ -604,7 +604,7 @@ TEST_CASE("SlotMap: pop")
         auto result = map.pop(key);
 
         CHECK(result.has_value());
-        CHECK(*result.value() == 42);
+        CHECK(*result.value() == std::uint8_t(42));
         CHECK(not map.contains(key));
     }
 
@@ -617,15 +617,15 @@ TEST_CASE("SlotMap: pop")
         CHECK(map.size().value == 3);
 
         auto r1 = map.pop(key1);
-        CHECK(r1.value() == 1);
+        CHECK(r1.value() == std::uint8_t(1));
         CHECK(map.size().value == 2);
 
         auto r2 = map.pop(key2);
-        CHECK(r2.value() == 2);
+        CHECK(r2.value() == std::uint8_t(2));
         CHECK(map.size().value == 1);
 
         auto r3 = map.pop(key3);
-        CHECK(r3.value() == 3);
+        CHECK(r3.value() == std::uint8_t(3));
         CHECK(map.is_empty());
     }
 }

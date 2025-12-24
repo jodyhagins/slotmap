@@ -66,31 +66,32 @@ TEST_CASE("Slot Debug: version masking with spare bit")
     SUBCASE("version retrieval masks out alive bit") {
         // Set version to a known value
         slot.set_version(42);
-        REQUIRE(slot.version() == 42);
+        REQUIRE(slot.version() == std::uint8_t(42));
 
         // Emplace changes alive bit but not version
         slot.emplace(100);
-        REQUIRE(slot.version() == 42);
+        REQUIRE(slot.version() == std::uint8_t(42));
 
         // Destroy changes alive bit but not version
         slot.destroy();
-        REQUIRE(slot.version() == 42);
+        REQUIRE(slot.version() == std::uint8_t(42));
     }
 
     SUBCASE("set_version preserves alive bit during lifecycle") {
         // Set version while free
         slot.set_version(10);
-        REQUIRE(slot.version() == 10);
+        REQUIRE(slot.version() == std::uint8_t(10));
 
         // Emplace makes it alive
         slot.emplace(123);
-        REQUIRE(slot.version() == 10);
+        REQUIRE(slot.version() == std::uint8_t(10));
 
         // Setting version while alive preserves alive state
         // (we can verify this by checking value() still works)
         slot.set_version(20);
-        REQUIRE(slot.version() == 20);
-        REQUIRE(slot.value() == 123); // Still alive and accessible
+        REQUIRE(slot.version() == std::uint8_t(20));
+        REQUIRE(
+            slot.value() == std::uint8_t(123)); // Still alive and accessible
 
         slot.destroy();
     }
@@ -100,23 +101,23 @@ TEST_CASE("Slot Debug: version masking with spare bit")
 
         for (int i = 0; i < 5; ++i) {
             slot.emplace(i * 10);
-            REQUIRE(slot.version() == 100);
+            REQUIRE(slot.version() == std::uint8_t(100));
             REQUIRE(slot.value() == i * 10);
             slot.destroy();
-            REQUIRE(slot.version() == 100);
+            REQUIRE(slot.version() == std::uint8_t(100));
         }
     }
 #else
     SUBCASE("version access in non-debug mode") {
         // In non-debug mode, no masking needed
         slot.set_version(42);
-        REQUIRE(slot.version() == 42);
+        REQUIRE(slot.version() == std::uint8_t(42));
 
         slot.emplace(100);
-        REQUIRE(slot.version() == 42);
+        REQUIRE(slot.version() == std::uint8_t(42));
 
         slot.destroy();
-        REQUIRE(slot.version() == 42);
+        REQUIRE(slot.version() == std::uint8_t(42));
     }
 #endif
 }
@@ -150,7 +151,7 @@ REQUIRE(slot.version() == max_version);
 
 slot.emplace(42);
 REQUIRE(slot.version() == max_version);
-REQUIRE(slot.value() == 42);
+REQUIRE(slot.value() == std::uint8_t(42));
 
 slot.destroy();
 REQUIRE(slot.version() == max_version);
@@ -165,7 +166,7 @@ SUBCASE("16-bit version") {
 
     slot.emplace(42);
     REQUIRE(slot.version() == max_version);
-    REQUIRE(slot.value() == 42);
+    REQUIRE(slot.value() == std::uint8_t(42));
 
     slot.destroy();
     REQUIRE(slot.version() == max_version);
@@ -180,7 +181,7 @@ SUBCASE("64-bit version") {
 
     slot.emplace(42);
     REQUIRE(slot.version() == max_version);
-    REQUIRE(slot.value() == 42);
+    REQUIRE(slot.value() == std::uint8_t(42));
 
     slot.destroy();
     REQUIRE(slot.version() == max_version);
@@ -200,21 +201,21 @@ TEST_CASE("Slot Debug: proper lifecycle transitions")
         // These operations should work without triggering assertions
         slot.set_version(1);
         slot.set_next(100);
-        REQUIRE(slot.version() == 1);
-        REQUIRE(slot.next() == 100);
+        REQUIRE(slot.version() == std::uint8_t(1));
+        REQUIRE(slot.next() == std::uint8_t(100));
 
         // Transition to alive
         slot.set_version(2);
         slot.emplace("test value");
-        REQUIRE(slot.version() == 2);
+        REQUIRE(slot.version() == std::uint8_t(2));
         REQUIRE(slot.value() == "test value");
 
         // Transition back to free
         slot.destroy();
         slot.set_version(3);
         slot.set_next(200);
-        REQUIRE(slot.version() == 3);
-        REQUIRE(slot.next() == 200);
+        REQUIRE(slot.version() == std::uint8_t(3));
+        REQUIRE(slot.next() == std::uint8_t(200));
     }
 
     SUBCASE("multiple cycles maintain correctness") {
@@ -235,23 +236,23 @@ TEST_CASE("Slot Debug: version and next independence")
     SUBCASE("setting next doesn't affect version") {
         slot.set_version(42);
         slot.set_next(100);
-        REQUIRE(slot.version() == 42);
-        REQUIRE(slot.next() == 100);
+        REQUIRE(slot.version() == std::uint8_t(42));
+        REQUIRE(slot.next() == std::uint8_t(100));
 
         slot.set_next(200);
-        REQUIRE(slot.version() == 42);
-        REQUIRE(slot.next() == 200);
+        REQUIRE(slot.version() == std::uint8_t(42));
+        REQUIRE(slot.next() == std::uint8_t(200));
     }
 
     SUBCASE("setting version doesn't affect next") {
         slot.set_next(100);
         slot.set_version(42);
-        REQUIRE(slot.next() == 100);
-        REQUIRE(slot.version() == 42);
+        REQUIRE(slot.next() == std::uint8_t(100));
+        REQUIRE(slot.version() == std::uint8_t(42));
 
         slot.set_version(84);
-        REQUIRE(slot.next() == 100);
-        REQUIRE(slot.version() == 84);
+        REQUIRE(slot.next() == std::uint8_t(100));
+        REQUIRE(slot.version() == std::uint8_t(84));
     }
 }
 
@@ -260,9 +261,9 @@ TEST_CASE("Slot Debug: version and next independence")
 // ============================================================================
 
 #ifdef __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wexit-time-destructors"
-#pragma clang diagnostic ignored "-Wglobal-constructors"
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wexit-time-destructors"
+    #pragma clang diagnostic ignored "-Wglobal-constructors"
 #endif
 template <std::unsigned_integral IntT>
 auto const gen_uint_no_high_bit =
@@ -272,7 +273,7 @@ auto const gen_uint_no_high_bit =
         return not (x & hibit);
     });
 #ifdef __clang__
-#pragma clang diagnostic pop
+    #pragma clang diagnostic pop
 #endif
 
 #ifdef WJH_SLOTMAP_DEBUG_MODE

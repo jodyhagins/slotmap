@@ -210,7 +210,7 @@ public:
 
         // Destroy all alive values using bitmap scanning
         for_each_alive(
-            [slot_array](index_type idx) { slot_array[idx].destroy(); });
+            [slot_array](index_type idx) { slot_array[idx.value].destroy(); });
 
         // Destroy all slot objects
         // Note: If slot_type is trivially destructible, this loop optimizes
@@ -251,7 +251,7 @@ public:
     EmplaceResult emplace(index_type index, Args &&... args)
     {
         assert(not is_alive(index));
-        auto & s = slots()[index];
+        auto & s = slots()[index.value];
         auto result = EmplaceResult{.version = s.version(), .next = s.next()};
         s.emplace(std::forward<Args>(args)...);
         set_alive(index, true);
@@ -275,7 +275,7 @@ public:
     bool destroy(index_type index)
     {
         assert(is_alive(index));
-        auto & s = slots()[index];
+        auto & s = slots()[index.value];
 
         // Destroy the value and clear alive bit
         s.destroy();
@@ -300,8 +300,8 @@ public:
     [[nodiscard]]
     bool is_alive(index_type index) const noexcept
     {
-        auto const byte_idx = static_cast<std::size_t>(index) / 8;
-        auto const bit_idx = static_cast<unsigned>(index % 8);
+        auto const byte_idx = index.value / 8;
+        auto const bit_idx = index.value % 8;
         return (bitmap()[byte_idx] & (std::byte{1} << bit_idx)) != std::byte{0};
     }
 
@@ -402,13 +402,13 @@ public:
     [[nodiscard]]
     slot_type & slot(index_type index) noexcept
     {
-        return slots()[index];
+        return slots()[index.value];
     }
 
     [[nodiscard]]
     slot_type const & slot(index_type index) const noexcept
     {
-        return slots()[index];
+        return slots()[index.value];
     }
 
     [[nodiscard]]
@@ -476,7 +476,7 @@ private:
      */
     static constexpr std::size_t bitmap_size(size_type slots_per_slab) noexcept
     {
-        return (static_cast<std::size_t>(slots_per_slab) + 7) / 8;
+        return (slots_per_slab.value + 7) / 8;
     }
 
     slot_type * slots() noexcept
@@ -505,8 +505,8 @@ private:
 
     void set_alive(index_type index, bool alive) noexcept
     {
-        auto const byte_idx = static_cast<std::size_t>(index) / 8;
-        auto const bit_idx = static_cast<unsigned>(index % 8);
+        auto const byte_idx = index.value / 8;
+        auto const bit_idx = index.value % 8;
         auto const mask = std::byte{1} << bit_idx;
 
         if (alive) {

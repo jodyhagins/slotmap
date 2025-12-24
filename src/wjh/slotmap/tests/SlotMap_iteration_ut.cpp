@@ -84,7 +84,7 @@ TEST_CASE("for_each basic iteration")
             [&](int const & v) { found_values.insert(v); });
 
         CHECK(visited.value == 10);
-        CHECK(found_values.size() == 10);
+        CHECK(found_values.size() == std::uint8_t(10));
         for (int i = 0; i < 10; ++i) {
             CHECK(found_values.count(i * 10) == 1);
         }
@@ -248,7 +248,7 @@ TEST_CASE("for_each with const map")
     std::set<int> found;
     cmap.for_each([&](int const & v) { found.insert(v); });
 
-    CHECK(found.size() == 2);
+    CHECK(found.size() == std::uint8_t(2));
     CHECK(found.count(42) == 1);
     CHECK(found.count(100) == 1);
 }
@@ -316,7 +316,7 @@ TEST_CASE("for_each with sparse data")
     auto visited = map.for_each([&](int const & v) { found.insert(v); });
 
     CHECK(visited.value == 5);
-    CHECK(found.size() == 5);
+    CHECK(found.size() == std::uint8_t(5));
     // Odd values should remain
     for (int i = 1; i < 10; i += 2) {
         CHECK(found.count(i) == 1);
@@ -403,7 +403,7 @@ TEST_CASE("for_each with erase option")
             }
         });
 
-        CHECK(erased_keys.size() == 1);
+        CHECK(erased_keys.size() == std::uint8_t(1));
         CHECK(erased_keys.count(target_key) == 1);
         CHECK(map.size().value == 4);
         CHECK(not map.contains(target_key));

@@ -92,35 +92,35 @@ TEST_CASE("Key 16-bit: basic construction and accessors")
 {
     SUBCASE("construct with all parameters") {
         constexpr auto k = make_key<void, 10_ib, 4_vb, 2_ub>(100, 5, 3);
-        static_assert(k.index() == 100);
-        static_assert(k.version() == 5);
-        static_assert(k.user() == 3);
+        static_assert(k.index() == std::uint8_t(100));
+        static_assert(k.version() == std::uint8_t(5));
+        static_assert(k.user() == std::uint8_t(3));
 
-        REQUIRE(k.index() == 100);
-        REQUIRE(k.version() == 5);
-        REQUIRE(k.user() == 3);
+        REQUIRE(k.index() == std::uint8_t(100));
+        REQUIRE(k.version() == std::uint8_t(5));
+        REQUIRE(k.user() == std::uint8_t(3));
     }
 
     SUBCASE("construct without user bits (defaults to 0)") {
         constexpr auto k = make_key<void, 10_ib, 6_vb, 0_ub>(100, 5);
-        static_assert(k.index() == 100);
-        static_assert(k.version() == 5);
-        static_assert(k.user() == 0);
+        static_assert(k.index() == std::uint8_t(100));
+        static_assert(k.version() == std::uint8_t(5));
+        static_assert(k.user() == std::uint8_t(0));
 
-        REQUIRE(k.index() == 100);
-        REQUIRE(k.version() == 5);
-        REQUIRE(k.user() == 0);
+        REQUIRE(k.index() == std::uint8_t(100));
+        REQUIRE(k.version() == std::uint8_t(5));
+        REQUIRE(k.user() == std::uint8_t(0));
     }
 
     SUBCASE("zero values") {
         constexpr auto k = make_key<void, 10_ib, 4_vb, 2_ub>(0, 0, 0);
-        static_assert(k.index() == 0);
-        static_assert(k.version() == 0);
-        static_assert(k.user() == 0);
+        static_assert(k.index() == std::uint8_t(0));
+        static_assert(k.version() == std::uint8_t(0));
+        static_assert(k.user() == std::uint8_t(0));
 
-        REQUIRE(k.index() == 0);
-        REQUIRE(k.version() == 0);
-        REQUIRE(k.user() == 0);
+        REQUIRE(k.index() == std::uint8_t(0));
+        REQUIRE(k.version() == std::uint8_t(0));
+        REQUIRE(k.user() == std::uint8_t(0));
     }
 }
 
@@ -131,16 +131,16 @@ TEST_CASE("Key 16-bit: default constructor creates null key")
         static_assert(not std::is_trivially_default_constructible_v<
                       Key<void, 10_ib, 6_vb>>);
         constexpr Key<void, 10_ib, 6_vb> k;
-        static_assert(k.index() == 0);
-        static_assert(k.version() == 0);
-        static_assert(k.user() == 0);
+        static_assert(k.index() == std::uint8_t(0));
+        static_assert(k.version() == std::uint8_t(0));
+        static_assert(k.user() == std::uint8_t(0));
         static_assert(k.is_null());
         static_assert(not k);
 
         REQUIRE(k.is_null());
-        REQUIRE(k.index() == 0);
-        REQUIRE(k.version() == 0);
-        REQUIRE(k.user() == 0);
+        REQUIRE(k.index() == std::uint8_t(0));
+        REQUIRE(k.version() == std::uint8_t(0));
+        REQUIRE(k.user() == std::uint8_t(0));
     }
 
     SUBCASE("default constructed equals null()") {
@@ -156,9 +156,9 @@ TEST_CASE("Key 16-bit: null() static method")
 {
     SUBCASE("null() returns all-zero key") {
         constexpr auto k = Key<void, 10_ib, 4_vb, 2_ub>::null();
-        static_assert(k.index() == 0);
-        static_assert(k.version() == 0);
-        static_assert(k.user() == 0);
+        static_assert(k.index() == std::uint8_t(0));
+        static_assert(k.version() == std::uint8_t(0));
+        static_assert(k.user() == std::uint8_t(0));
         static_assert(k.is_null());
 
         REQUIRE(k.is_null());
@@ -179,25 +179,25 @@ TEST_CASE("Key 16-bit: with_user() creates new key")
         constexpr auto k1 = make_key<void, 10_ib, 4_vb, 2_ub>(100, 5, 1);
         constexpr auto k2 = k1.with_user(3u);
 
-        static_assert(k1.index() == 100);
-        static_assert(k1.version() == 5);
-        static_assert(k1.user() == 1);
+        static_assert(k1.index() == std::uint8_t(100));
+        static_assert(k1.version() == std::uint8_t(5));
+        static_assert(k1.user() == std::uint8_t(1));
 
-        static_assert(k2.index() == 100);
-        static_assert(k2.version() == 5);
-        static_assert(k2.user() == 3);
+        static_assert(k2.index() == std::uint8_t(100));
+        static_assert(k2.version() == std::uint8_t(5));
+        static_assert(k2.user() == std::uint8_t(3));
 
         REQUIRE(k1.index() == k2.index());
         REQUIRE(k1.version() == k2.version());
-        REQUIRE(k1.user() == 1);
-        REQUIRE(k2.user() == 3);
+        REQUIRE(k1.user() == std::uint8_t(1));
+        REQUIRE(k2.user() == std::uint8_t(3));
     }
 
     SUBCASE("with_user preserves constexpr") {
         constexpr auto k1 = make_key<void, 10_ib, 4_vb, 2_ub>(100, 5, 0);
         constexpr auto k2 = k1.with_user(2u);
-        static_assert(k2.user() == 2);
-        REQUIRE(k2.user() == 2);
+        static_assert(k2.user() == std::uint8_t(2));
+        REQUIRE(k2.user() == std::uint8_t(2));
     }
 }
 
@@ -227,13 +227,13 @@ TEST_CASE("Key 16-bit: bit packing correctness")
         // 2 bits for user: max = 2^2 - 1 = 3
         constexpr auto k = make_key<void, 10_ib, 4_vb, 2_ub>(1023, 15, 3);
 
-        static_assert(k.index() == 1023);
-        static_assert(k.version() == 15);
-        static_assert(k.user() == 3);
+        static_assert(k.index() == std::uint16_t(1023));
+        static_assert(k.version() == std::uint8_t(15));
+        static_assert(k.user() == std::uint8_t(3));
 
-        REQUIRE(k.index() == 1023);
-        REQUIRE(k.version() == 15);
-        REQUIRE(k.user() == 3);
+        REQUIRE(k.index() == std::uint16_t(1023));
+        REQUIRE(k.version() == std::uint8_t(15));
+        REQUIRE(k.user() == std::uint8_t(3));
     }
 
     SUBCASE("independent bit fields don't interfere") {
@@ -241,21 +241,21 @@ TEST_CASE("Key 16-bit: bit packing correctness")
         constexpr auto k2 = make_key<void, 10_ib, 4_vb, 2_ub>(0, 15, 0);
         constexpr auto k3 = make_key<void, 10_ib, 4_vb, 2_ub>(0, 0, 3);
 
-        static_assert(k1.index() == 1023);
-        static_assert(k1.version() == 0);
-        static_assert(k1.user() == 0);
+        static_assert(k1.index() == std::uint16_t(1023));
+        static_assert(k1.version() == std::uint8_t(0));
+        static_assert(k1.user() == std::uint8_t(0));
 
-        static_assert(k2.index() == 0);
-        static_assert(k2.version() == 15);
-        static_assert(k2.user() == 0);
+        static_assert(k2.index() == std::uint8_t(0));
+        static_assert(k2.version() == std::uint8_t(15));
+        static_assert(k2.user() == std::uint8_t(0));
 
-        static_assert(k3.index() == 0);
-        static_assert(k3.version() == 0);
-        static_assert(k3.user() == 3);
+        static_assert(k3.index() == std::uint8_t(0));
+        static_assert(k3.version() == std::uint8_t(0));
+        static_assert(k3.user() == std::uint8_t(3));
 
-        REQUIRE(k1.version() == 0);
-        REQUIRE(k2.index() == 0);
-        REQUIRE(k3.version() == 0);
+        REQUIRE(k1.version() == std::uint8_t(0));
+        REQUIRE(k2.index() == std::uint8_t(0));
+        REQUIRE(k3.version() == std::uint8_t(0));
     }
 }
 
@@ -263,32 +263,32 @@ TEST_CASE("Key 16-bit: different bit configurations")
 {
     SUBCASE("configuration 8/8/0") {
         constexpr auto k = make_key<void, 8_ib, 8_vb, 0_ub>(255, 255);
-        static_assert(k.index() == 255);
-        static_assert(k.version() == 255);
-        static_assert(k.user() == 0);
+        static_assert(k.index() == std::uint8_t(255));
+        static_assert(k.version() == std::uint8_t(255));
+        static_assert(k.user() == std::uint8_t(0));
 
-        REQUIRE(k.index() == 255);
-        REQUIRE(k.version() == 255);
+        REQUIRE(k.index() == std::uint8_t(255));
+        REQUIRE(k.version() == std::uint8_t(255));
     }
 
     SUBCASE("configuration 12/4/0") {
         constexpr auto k = make_key<void, 12_ib, 4_vb, 0_ub>(4095, 15);
-        static_assert(k.index() == 4095);
-        static_assert(k.version() == 15);
+        static_assert(k.index() == std::uint16_t(4095));
+        static_assert(k.version() == std::uint8_t(15));
 
-        REQUIRE(k.index() == 4095);
-        REQUIRE(k.version() == 15);
+        REQUIRE(k.index() == std::uint16_t(4095));
+        REQUIRE(k.version() == std::uint8_t(15));
     }
 
     SUBCASE("configuration 6/6/4") {
         constexpr auto k = make_key<void, 6_ib, 6_vb, 4_ub>(63, 63, 15);
-        static_assert(k.index() == 63);
-        static_assert(k.version() == 63);
-        static_assert(k.user() == 15);
+        static_assert(k.index() == std::uint8_t(63));
+        static_assert(k.version() == std::uint8_t(63));
+        static_assert(k.user() == std::uint8_t(15));
 
-        REQUIRE(k.index() == 63);
-        REQUIRE(k.version() == 63);
-        REQUIRE(k.user() == 15);
+        REQUIRE(k.index() == std::uint8_t(63));
+        REQUIRE(k.version() == std::uint8_t(63));
+        REQUIRE(k.user() == std::uint8_t(15));
     }
 }
 
@@ -375,9 +375,10 @@ TEST_CASE("Key 16-bit: hash function")
         constexpr auto k = make_key<void, 10_ib, 4_vb, 2_ub>(100, 5, 3);
         constexpr auto h = k.hash();
         static_assert(std::is_same_v<decltype(h), std::size_t const>);
-        static_assert(h != 0); // Unlikely to be zero for non-null key
+        static_assert(
+            h != std::size_t(0)); // Unlikely to be zero for non-null key
 
-        REQUIRE(h != 0);
+        REQUIRE(h != std::size_t(0));
     }
 
     SUBCASE("equal keys have equal hashes") {
@@ -408,7 +409,7 @@ TEST_CASE("Key 16-bit: std::hash specialization")
         auto h = hasher(k);
 
         REQUIRE(std::is_same_v<decltype(h), std::size_t>);
-        REQUIRE(h != 0);
+        REQUIRE(h != std::size_t(0));
     }
 
     SUBCASE("std::hash matches member hash()") {
@@ -431,7 +432,7 @@ TEST_CASE("Key 16-bit: std::hash specialization")
 
         REQUIRE(map[k1] == "first");
         REQUIRE(map[k2] == "second");
-        REQUIRE(map.size() == 2);
+        REQUIRE(map.size() == std::uint8_t(2));
     }
 }
 
@@ -451,35 +452,35 @@ TEST_CASE("Key 32-bit: basic construction and accessors")
 {
     SUBCASE("construct with all parameters") {
         constexpr auto k = make_key<void, 20_ib, 10_vb, 2_ub>(100, 5, 3);
-        static_assert(k.index() == 100);
-        static_assert(k.version() == 5);
-        static_assert(k.user() == 3);
+        static_assert(k.index() == std::uint8_t(100));
+        static_assert(k.version() == std::uint8_t(5));
+        static_assert(k.user() == std::uint8_t(3));
 
-        REQUIRE(k.index() == 100);
-        REQUIRE(k.version() == 5);
-        REQUIRE(k.user() == 3);
+        REQUIRE(k.index() == std::uint8_t(100));
+        REQUIRE(k.version() == std::uint8_t(5));
+        REQUIRE(k.user() == std::uint8_t(3));
     }
 
     SUBCASE("construct without user bits (defaults to 0)") {
         constexpr auto k = make_key<void, 20_ib, 10_vb, 2_ub>(100, 5);
-        static_assert(k.index() == 100);
-        static_assert(k.version() == 5);
-        static_assert(k.user() == 0);
+        static_assert(k.index() == std::uint8_t(100));
+        static_assert(k.version() == std::uint8_t(5));
+        static_assert(k.user() == std::uint8_t(0));
 
-        REQUIRE(k.index() == 100);
-        REQUIRE(k.version() == 5);
-        REQUIRE(k.user() == 0);
+        REQUIRE(k.index() == std::uint8_t(100));
+        REQUIRE(k.version() == std::uint8_t(5));
+        REQUIRE(k.user() == std::uint8_t(0));
     }
 
     SUBCASE("zero values") {
         constexpr auto k = make_key<void, 20_ib, 10_vb, 2_ub>(0, 0, 0);
-        static_assert(k.index() == 0);
-        static_assert(k.version() == 0);
-        static_assert(k.user() == 0);
+        static_assert(k.index() == std::uint8_t(0));
+        static_assert(k.version() == std::uint8_t(0));
+        static_assert(k.user() == std::uint8_t(0));
 
-        REQUIRE(k.index() == 0);
-        REQUIRE(k.version() == 0);
-        REQUIRE(k.user() == 0);
+        REQUIRE(k.index() == std::uint8_t(0));
+        REQUIRE(k.version() == std::uint8_t(0));
+        REQUIRE(k.user() == std::uint8_t(0));
     }
 }
 
@@ -491,15 +492,15 @@ TEST_CASE("Key 32-bit: default constructor creates null key")
         static_assert(not std::is_trivially_default_constructible_v<
                       Key<void, 20_ib, 10_vb, 2_ub>>);
         constexpr Key<void, 20_ib, 10_vb, 2_ub> k;
-        static_assert(k.index() == 0);
-        static_assert(k.version() == 0);
-        static_assert(k.user() == 0);
+        static_assert(k.index() == std::uint8_t(0));
+        static_assert(k.version() == std::uint8_t(0));
+        static_assert(k.user() == std::uint8_t(0));
         static_assert(k.is_null());
 
         REQUIRE(k.is_null());
-        REQUIRE(k.index() == 0);
-        REQUIRE(k.version() == 0);
-        REQUIRE(k.user() == 0);
+        REQUIRE(k.index() == std::uint8_t(0));
+        REQUIRE(k.version() == std::uint8_t(0));
+        REQUIRE(k.user() == std::uint8_t(0));
     }
 
     SUBCASE("default constructed equals null()") {
@@ -515,9 +516,9 @@ TEST_CASE("Key 32-bit: null() static method")
 {
     SUBCASE("null() returns all-zero key") {
         constexpr auto k = Key<void, 20_ib, 10_vb, 2_ub>::null();
-        static_assert(k.index() == 0);
-        static_assert(k.version() == 0);
-        static_assert(k.user() == 0);
+        static_assert(k.index() == std::uint8_t(0));
+        static_assert(k.version() == std::uint8_t(0));
+        static_assert(k.user() == std::uint8_t(0));
         static_assert(k.is_null());
 
         REQUIRE(k.is_null());
@@ -537,25 +538,25 @@ TEST_CASE("Key 32-bit: with_user() creates new key")
         constexpr auto k1 = make_key<void, 20_ib, 10_vb, 2_ub>(100, 5, 1);
         constexpr auto k2 = k1.with_user(3u);
 
-        static_assert(k1.index() == 100);
-        static_assert(k1.version() == 5);
-        static_assert(k1.user() == 1);
+        static_assert(k1.index() == std::uint8_t(100));
+        static_assert(k1.version() == std::uint8_t(5));
+        static_assert(k1.user() == std::uint8_t(1));
 
-        static_assert(k2.index() == 100);
-        static_assert(k2.version() == 5);
-        static_assert(k2.user() == 3);
+        static_assert(k2.index() == std::uint8_t(100));
+        static_assert(k2.version() == std::uint8_t(5));
+        static_assert(k2.user() == std::uint8_t(3));
 
         REQUIRE(k1.index() == k2.index());
         REQUIRE(k1.version() == k2.version());
-        REQUIRE(k1.user() == 1);
-        REQUIRE(k2.user() == 3);
+        REQUIRE(k1.user() == std::uint8_t(1));
+        REQUIRE(k2.user() == std::uint8_t(3));
     }
 
     SUBCASE("with_user preserves constexpr") {
         constexpr auto k1 = make_key<void, 20_ib, 10_vb, 2_ub>(100, 5, 0);
         constexpr auto k2 = k1.with_user(2u);
-        static_assert(k2.user() == 2);
-        REQUIRE(k2.user() == 2);
+        static_assert(k2.user() == std::uint8_t(2));
+        REQUIRE(k2.user() == std::uint8_t(2));
     }
 }
 
@@ -587,13 +588,13 @@ TEST_CASE("Key 32-bit: bit packing correctness")
         // 2 bits for user: max = 2^2 - 1 = 3
         constexpr auto k = make_key<void, 20_ib, 10_vb, 2_ub>(1048575, 1023, 3);
 
-        static_assert(k.index() == 1048575);
-        static_assert(k.version() == 1023);
-        static_assert(k.user() == 3);
+        static_assert(k.index() == std::uint32_t(1048575));
+        static_assert(k.version() == std::uint16_t(1023));
+        static_assert(k.user() == std::uint8_t(3));
 
-        REQUIRE(k.index() == 1048575);
-        REQUIRE(k.version() == 1023);
-        REQUIRE(k.user() == 3);
+        REQUIRE(k.index() == std::uint32_t(1048575));
+        REQUIRE(k.version() == std::uint16_t(1023));
+        REQUIRE(k.user() == std::uint8_t(3));
     }
 
     SUBCASE("independent bit fields don't interfere") {
@@ -601,21 +602,21 @@ TEST_CASE("Key 32-bit: bit packing correctness")
         constexpr auto k2 = make_key<void, 20_ib, 10_vb, 2_ub>(0, 1023, 0);
         constexpr auto k3 = make_key<void, 20_ib, 10_vb, 2_ub>(0, 0, 3);
 
-        static_assert(k1.index() == 1048575);
-        static_assert(k1.version() == 0);
-        static_assert(k1.user() == 0);
+        static_assert(k1.index() == std::uint32_t(1048575));
+        static_assert(k1.version() == std::uint8_t(0));
+        static_assert(k1.user() == std::uint8_t(0));
 
-        static_assert(k2.index() == 0);
-        static_assert(k2.version() == 1023);
-        static_assert(k2.user() == 0);
+        static_assert(k2.index() == std::uint8_t(0));
+        static_assert(k2.version() == std::uint16_t(1023));
+        static_assert(k2.user() == std::uint8_t(0));
 
-        static_assert(k3.index() == 0);
-        static_assert(k3.version() == 0);
-        static_assert(k3.user() == 3);
+        static_assert(k3.index() == std::uint8_t(0));
+        static_assert(k3.version() == std::uint8_t(0));
+        static_assert(k3.user() == std::uint8_t(3));
 
-        REQUIRE(k1.version() == 0);
-        REQUIRE(k2.index() == 0);
-        REQUIRE(k3.version() == 0);
+        REQUIRE(k1.version() == std::uint8_t(0));
+        REQUIRE(k2.index() == std::uint8_t(0));
+        REQUIRE(k3.version() == std::uint8_t(0));
     }
 }
 
@@ -623,33 +624,33 @@ TEST_CASE("Key 32-bit: different bit configurations")
 {
     SUBCASE("configuration 16/16/0") {
         constexpr auto k = make_key<void, 16_ib, 16_vb, 0_ub>(65535, 65535);
-        static_assert(k.index() == 65535);
-        static_assert(k.version() == 65535);
-        static_assert(k.user() == 0);
+        static_assert(k.index() == std::uint16_t(65535));
+        static_assert(k.version() == std::uint16_t(65535));
+        static_assert(k.user() == std::uint8_t(0));
 
-        REQUIRE(k.index() == 65535);
-        REQUIRE(k.version() == 65535);
+        REQUIRE(k.index() == std::uint16_t(65535));
+        REQUIRE(k.version() == std::uint16_t(65535));
     }
 
     SUBCASE("configuration 24/8/0") {
         constexpr auto k = make_key<void, 24_ib, 8_vb, 0_ub>(16777215, 255);
-        static_assert(k.index() == 16777215);
-        static_assert(k.version() == 255);
+        static_assert(k.index() == std::uint32_t(16777215));
+        static_assert(k.version() == std::uint8_t(255));
 
-        REQUIRE(k.index() == 16777215);
-        REQUIRE(k.version() == 255);
+        REQUIRE(k.index() == std::uint32_t(16777215));
+        REQUIRE(k.version() == std::uint8_t(255));
     }
 
     SUBCASE("configuration 10/10/12") {
         constexpr auto k =
             make_key<void, 10_ib, 10_vb, 12_ub>(1023, 1023, 4095);
-        static_assert(k.index() == 1023);
-        static_assert(k.version() == 1023);
-        static_assert(k.user() == 4095);
+        static_assert(k.index() == std::uint16_t(1023));
+        static_assert(k.version() == std::uint16_t(1023));
+        static_assert(k.user() == std::uint16_t(4095));
 
-        REQUIRE(k.index() == 1023);
-        REQUIRE(k.version() == 1023);
-        REQUIRE(k.user() == 4095);
+        REQUIRE(k.index() == std::uint16_t(1023));
+        REQUIRE(k.version() == std::uint16_t(1023));
+        REQUIRE(k.user() == std::uint16_t(4095));
     }
 }
 
@@ -736,9 +737,10 @@ TEST_CASE("Key 32-bit: hash function")
         constexpr auto k = make_key<void, 20_ib, 10_vb, 2_ub>(100, 5, 3);
         constexpr auto h = k.hash();
         static_assert(std::is_same_v<decltype(h), std::size_t const>);
-        static_assert(h != 0); // Unlikely to be zero for non-null key
+        static_assert(
+            h != std::size_t(0)); // Unlikely to be zero for non-null key
 
-        REQUIRE(h != 0);
+        REQUIRE(h != std::size_t(0));
     }
 
     SUBCASE("equal keys have equal hashes") {
@@ -769,7 +771,7 @@ TEST_CASE("Key 32-bit: std::hash specialization")
         auto h = hasher(k);
 
         REQUIRE(std::is_same_v<decltype(h), std::size_t>);
-        REQUIRE(h != 0);
+        REQUIRE(h != std::size_t(0));
     }
 
     SUBCASE("std::hash matches member hash()") {
@@ -792,7 +794,7 @@ TEST_CASE("Key 32-bit: std::hash specialization")
 
         REQUIRE(map[k1] == "first");
         REQUIRE(map[k2] == "second");
-        REQUIRE(map.size() == 2);
+        REQUIRE(map.size() == std::uint8_t(2));
     }
 }
 
@@ -812,13 +814,13 @@ TEST_CASE("Key 64-bit: basic construction and accessors")
     SUBCASE("construct with all parameters") {
         constexpr auto k =
             make_key<void, 40_ib, 20_vb, 4_ub>(1000000, 500000, 15);
-        static_assert(k.index() == 1000000);
-        static_assert(k.version() == 500000);
-        static_assert(k.user() == 15);
+        static_assert(k.index() == std::uint32_t(1000000));
+        static_assert(k.version() == std::uint32_t(500000));
+        static_assert(k.user() == std::uint8_t(15));
 
-        REQUIRE(k.index() == 1000000);
-        REQUIRE(k.version() == 500000);
-        REQUIRE(k.user() == 15);
+        REQUIRE(k.index() == std::uint32_t(1000000));
+        REQUIRE(k.version() == std::uint32_t(500000));
+        REQUIRE(k.user() == std::uint8_t(15));
     }
 
     SUBCASE("maximum values") {
@@ -828,13 +830,13 @@ TEST_CASE("Key 64-bit: basic construction and accessors")
         constexpr auto k =
             make_key<void, 40_ib, 20_vb, 4_ub>(1099511627775ULL, 1048575, 15);
 
-        static_assert(k.index() == 1099511627775ULL);
-        static_assert(k.version() == 1048575);
-        static_assert(k.user() == 15);
+        static_assert(k.index() == std::uint64_t(1099511627775));
+        static_assert(k.version() == std::uint32_t(1048575));
+        static_assert(k.user() == std::uint8_t(15));
 
-        REQUIRE(k.index() == 1099511627775ULL);
-        REQUIRE(k.version() == 1048575);
-        REQUIRE(k.user() == 15);
+        REQUIRE(k.index() == std::uint64_t(1099511627775));
+        REQUIRE(k.version() == std::uint32_t(1048575));
+        REQUIRE(k.user() == std::uint8_t(15));
     }
 }
 
@@ -854,13 +856,13 @@ TEST_CASE("Key 64-bit: different bit configurations")
     SUBCASE("configuration 48/12/4") {
         constexpr auto k =
             make_key<void, 48_ib, 12_vb, 4_ub>(281474976710655ULL, 4095, 15);
-        static_assert(k.index() == 281474976710655ULL);
-        static_assert(k.version() == 4095);
-        static_assert(k.user() == 15);
+        static_assert(k.index() == std::uint64_t(281474976710655));
+        static_assert(k.version() == std::uint16_t(4095));
+        static_assert(k.user() == std::uint8_t(15));
 
-        REQUIRE(k.index() == 281474976710655ULL);
-        REQUIRE(k.version() == 4095);
-        REQUIRE(k.user() == 15);
+        REQUIRE(k.index() == std::uint64_t(281474976710655));
+        REQUIRE(k.version() == std::uint16_t(4095));
+        REQUIRE(k.user() == std::uint8_t(15));
     }
 }
 
@@ -880,13 +882,13 @@ TEST_CASE("Key 64-bit: with_user() creates new key")
     constexpr auto k1 = make_key<void, 40_ib, 20_vb, 4_ub>(1000000, 500000, 5);
     constexpr auto k2 = k1.with_user(10u);
 
-    static_assert(k2.index() == 1000000);
-    static_assert(k2.version() == 500000);
-    static_assert(k2.user() == 10);
-    static_assert(k1.user() == 5); // Original unchanged
+    static_assert(k2.index() == std::uint32_t(1000000));
+    static_assert(k2.version() == std::uint32_t(500000));
+    static_assert(k2.user() == std::uint8_t(10));
+    static_assert(k1.user() == std::uint8_t(5)); // Original unchanged
 
-    REQUIRE(k2.user() == 10);
-    REQUIRE(k1.user() == 5);
+    REQUIRE(k2.user() == std::uint8_t(10));
+    REQUIRE(k1.user() == std::uint8_t(5));
 }
 
 TEST_CASE("Key 64-bit: equality and comparison")
@@ -918,9 +920,9 @@ TEST_CASE("Key 64-bit: hashing")
         constexpr auto k =
             make_key<void, 40_ib, 20_vb, 4_ub>(1000000, 500000, 15);
         constexpr auto h = k.hash();
-        static_assert(h != 0);
+        static_assert(h != std::size_t(0));
 
-        REQUIRE(h != 0);
+        REQUIRE(h != std::size_t(0));
     }
 
     SUBCASE("std::hash specialization") {
@@ -953,21 +955,21 @@ TEST_CASE("Key 128-bit: basic construction and accessors")
             1000000000000ULL,
             1000000000ULL,
             255);
-        static_assert(k.index() == 1000000000000ULL);
-        static_assert(k.version() == 1000000000ULL);
-        static_assert(k.user() == 255);
+        static_assert(k.index() == std::uint64_t(1000000000000));
+        static_assert(k.version() == std::uint64_t(1000000000));
+        static_assert(k.user() == std::uint8_t(255));
 
-        REQUIRE(k.index() == 1000000000000ULL);
-        REQUIRE(k.version() == 1000000000ULL);
-        REQUIRE(k.user() == 255);
+        REQUIRE(k.index() == std::uint64_t(1000000000000));
+        REQUIRE(k.version() == std::uint64_t(1000000000));
+        REQUIRE(k.user() == std::uint8_t(255));
     }
 
     SUBCASE("maximum user bits value") {
         // 8 bits for user: max = 255
         constexpr auto k = make_key<void, 80_ib, 40_vb, 8_ub>(1, 1, 255);
-        static_assert(k.user() == 255);
+        static_assert(k.user() == std::uint8_t(255));
 
-        REQUIRE(k.user() == 255);
+        REQUIRE(k.user() == std::uint8_t(255));
     }
 }
 
@@ -977,23 +979,23 @@ TEST_CASE("Key 128-bit: different bit configurations")
         constexpr auto k = make_key<void, 64_ib, 64_vb, 0_ub>(
             18446744073709551615ULL,
             18446744073709551615ULL);
-        static_assert(k.index() == 18446744073709551615ULL);
-        static_assert(k.version() == 18446744073709551615ULL);
+        static_assert(k.index() == std::uint64_t(18446744073709551615));
+        static_assert(k.version() == std::uint64_t(18446744073709551615));
 
-        REQUIRE(k.index() == 18446744073709551615ULL);
-        REQUIRE(k.version() == 18446744073709551615ULL);
+        REQUIRE(k.index() == std::uint64_t(18446744073709551615));
+        REQUIRE(k.version() == std::uint64_t(18446744073709551615));
     }
 
     SUBCASE("configuration 100/20/8") {
         constexpr auto k =
             make_key<void, 100_ib, 20_vb, 8_ub>(1ULL << 50, 1048575, 255);
         static_assert(k.index() == (1ULL << 50));
-        static_assert(k.version() == 1048575);
-        static_assert(k.user() == 255);
+        static_assert(k.version() == std::uint32_t(1048575));
+        static_assert(k.user() == std::uint8_t(255));
 
         REQUIRE(k.index() == (1ULL << 50));
-        REQUIRE(k.version() == 1048575);
-        REQUIRE(k.user() == 255);
+        REQUIRE(k.version() == std::uint32_t(1048575));
+        REQUIRE(k.user() == std::uint8_t(255));
     }
 }
 
@@ -1014,11 +1016,11 @@ TEST_CASE("Key 128-bit: with_user() creates new key")
         {100}};
     constexpr auto k2 = k1.with_user({200});
 
-    static_assert(k2.user() == 200);
-    static_assert(k1.user() == 100);
+    static_assert(k2.user() == std::uint8_t(200));
+    static_assert(k1.user() == std::uint8_t(100));
 
-    REQUIRE(k2.user() == 200);
-    REQUIRE(k1.user() == 100);
+    REQUIRE(k2.user() == std::uint8_t(200));
+    REQUIRE(k1.user() == std::uint8_t(100));
 }
 
 TEST_CASE("Key 128-bit: equality and comparison")
@@ -1061,9 +1063,9 @@ TEST_CASE("Key 128-bit: hashing")
             {1000000000ULL},
             {255}};
         constexpr auto h = k.hash();
-        static_assert(h != 0);
+        static_assert(h != std::size_t(0));
 
-        REQUIRE(h != 0);
+        REQUIRE(h != std::size_t(0));
     }
 
     SUBCASE("std::hash specialization") {
@@ -1116,18 +1118,18 @@ TEST_CASE("Key: edge cases with zero user bits")
 {
     SUBCASE("zero user bits configuration compiles") {
         constexpr auto k = make_key<void, 24_ib, 8_vb, 0_ub>(16777215, 255);
-        static_assert(k.index() == 16777215);
-        static_assert(k.version() == 255);
-        static_assert(k.user() == 0);
+        static_assert(k.index() == std::uint32_t(16777215));
+        static_assert(k.version() == std::uint8_t(255));
+        static_assert(k.user() == std::uint8_t(0));
 
-        REQUIRE(k.user() == 0);
+        REQUIRE(k.user() == std::uint8_t(0));
     }
 
     SUBCASE("with_user on zero user bits key") {
         constexpr auto k1 = make_key<void, 24_ib, 8_vb, 0_ub>(16777215, 255);
         constexpr auto k2 = k1.with_user(0u);
 
-        static_assert(k2.user() == 0);
+        static_assert(k2.user() == std::uint8_t(0));
         REQUIRE(k1 == k2);
     }
 }
@@ -1136,13 +1138,13 @@ TEST_CASE("Key: edge cases with single-bit fields")
 {
     SUBCASE("1-bit user field") {
         constexpr auto k = make_key<void, 30_ib, 1_vb, 1_ub>(1073741823, 1, 1);
-        static_assert(k.index() == 1073741823);
-        static_assert(k.version() == 1);
-        static_assert(k.user() == 1);
+        static_assert(k.index() == std::uint32_t(1073741823));
+        static_assert(k.version() == std::uint8_t(1));
+        static_assert(k.user() == std::uint8_t(1));
 
-        REQUIRE(k.index() == 1073741823);
-        REQUIRE(k.version() == 1);
-        REQUIRE(k.user() == 1);
+        REQUIRE(k.index() == std::uint32_t(1073741823));
+        REQUIRE(k.version() == std::uint8_t(1));
+        REQUIRE(k.user() == std::uint8_t(1));
     }
 }
 
@@ -1161,15 +1163,15 @@ TEST_CASE("Key: constexpr capabilities")
         constexpr auto raw = k1.to_underlying();
         constexpr auto h = k1.hash();
 
-        static_assert(idx == 100);
-        static_assert(ver == 5);
-        static_assert(usr == 3);
+        static_assert(idx == std::uint8_t(100));
+        static_assert(ver == std::uint8_t(5));
+        static_assert(usr == std::uint8_t(3));
         static_assert(not null_check);
         static_assert(null_key.is_null());
         static_assert(raw != 0);
         static_assert(not equal);
         static_assert(not less);
-        static_assert(h != 0);
+        static_assert(h != std::size_t(0));
 
         REQUIRE(true);
     }
@@ -1273,7 +1275,7 @@ TEST_CASE("Key: practical usage in containers")
         map[k2] = 20;
         map[k3] = 30;
 
-        REQUIRE(map.size() == 3);
+        REQUIRE(map.size() == std::uint8_t(3));
         REQUIRE(map[k1] == 10);
         REQUIRE(map[k2] == 20);
         REQUIRE(map[k3] == 30);
@@ -1308,7 +1310,7 @@ TEST_CASE("Key: value semantics comprehensive test")
         auto k2 = k1.with_user(3u);
 
         REQUIRE(k1.user() == original_user);
-        REQUIRE(k2.user() == 3);
+        REQUIRE(k2.user() == std::uint8_t(3));
         REQUIRE(k1 != k2);
     }
 }
@@ -1520,9 +1522,9 @@ TEST_CASE("TrivialKey: construction and accessors work correctly")
     SUBCASE("construct with components") {
         auto k = make_trivial_key<int, 16_ib, 8_vb, 8_ub>(100, 5, 42);
 
-        REQUIRE(k.index() == 100);
-        REQUIRE(k.version() == 5);
-        REQUIRE(k.user() == 42);
+        REQUIRE(k.index() == std::uint8_t(100));
+        REQUIRE(k.version() == std::uint8_t(5));
+        REQUIRE(k.user() == std::uint8_t(42));
     }
 
     SUBCASE("null() returns null key") {
@@ -1530,8 +1532,8 @@ TEST_CASE("TrivialKey: construction and accessors work correctly")
         auto k = TK::null();
 
         REQUIRE(k.is_null());
-        REQUIRE(k.index() == 0);
-        REQUIRE(k.version() == 0);
+        REQUIRE(k.index() == std::uint8_t(0));
+        REQUIRE(k.version() == std::uint8_t(0));
     }
 
     SUBCASE("with_user creates modified copy") {
@@ -1539,8 +1541,8 @@ TEST_CASE("TrivialKey: construction and accessors work correctly")
         auto k1 = make_trivial_key<int, 16_ib, 8_vb, 8_ub>(100, 5, 1);
         auto k2 = k1.with_user(TK::user_type{std::uint8_t{99}});
 
-        REQUIRE(k1.user() == 1);
-        REQUIRE(k2.user() == 99);
+        REQUIRE(k1.user() == std::uint8_t(1));
+        REQUIRE(k2.user() == std::uint8_t(99));
         REQUIRE(k1.index() == k2.index());
         REQUIRE(k1.version() == k2.version());
     }
@@ -1572,7 +1574,7 @@ TEST_CASE("TrivialKey: hashing")
         auto k = make_trivial_key<int, 16_ib, 16_vb>(100, 5);
 
         auto h = k.hash();
-        REQUIRE(h != 0);
+        REQUIRE(h != std::size_t(0));
     }
 
     SUBCASE("std::hash specialization works") {
@@ -1668,8 +1670,8 @@ TEST_CASE("TrivialKey: implicit lifetime type suitability")
         // For implicit lifetime types, accessing buffer.key after memcpy
         // is well-defined because the object's lifetime begins implicitly.
         REQUIRE(buffer.key == original);
-        REQUIRE(buffer.key.index() == 12345);
-        REQUIRE(buffer.key.version() == 678);
+        REQUIRE(buffer.key.index() == std::uint16_t(12345));
+        REQUIRE(buffer.key.version() == std::uint16_t(678));
     }
 }
 
@@ -1679,8 +1681,8 @@ static_assert(std::is_same_v<TK::value_type, std::uint16_t>);
 static_assert(std::is_trivially_copyable_v<TK>);
 
 auto k = make_trivial_key<int, 8_ib, 8_vb>(255, 255);
-REQUIRE(k.index() == 255);
-REQUIRE(k.version() == 255);
+REQUIRE(k.index() == std::uint8_t(255));
+REQUIRE(k.version() == std::uint8_t(255));
 } // anonymous namespace
 
 SUBCASE("64-bit TrivialKey") {

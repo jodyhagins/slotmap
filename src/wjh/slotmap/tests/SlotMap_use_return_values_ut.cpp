@@ -737,7 +737,7 @@ TEST_SUITE("SlotMap::use - Edge Cases")
                           std::optional<std::vector<int>>>);
 
             REQUIRE(result.has_value());
-            REQUIRE(result->size() == 3);
+            REQUIRE(result->size() == std::uint32_t(3));
             CHECK((*result)[0] == 10);
             CHECK((*result)[1] == 20);
             CHECK((*result)[2] == 30);

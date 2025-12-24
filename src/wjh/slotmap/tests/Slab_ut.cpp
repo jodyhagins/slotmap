@@ -71,23 +71,23 @@ TEST_CASE("Slab: creation")
         auto slab = TestSlab::create(1u);
 
         REQUIRE(slab != nullptr);
-        REQUIRE(slab->slots_per_slab() == 1);
-        REQUIRE(slab->dead_count() == 0);
+        REQUIRE(slab->slots_per_slab() == std::uint32_t(1));
+        REQUIRE(slab->dead_count() == std::uint32_t(0));
     }
 
     SUBCASE("create with power of 2 slots") {
         auto slab = TestSlab::create(1024u);
 
         REQUIRE(slab != nullptr);
-        REQUIRE(slab->slots_per_slab() == 1024);
-        REQUIRE(slab->dead_count() == 0);
+        REQUIRE(slab->slots_per_slab() == std::uint32_t(1024));
+        REQUIRE(slab->dead_count() == std::uint32_t(0));
     }
 
     SUBCASE("create with arbitrary slot count") {
         auto slab = TestSlab::create(100u);
 
         REQUIRE(slab != nullptr);
-        REQUIRE(slab->slots_per_slab() == 100);
+        REQUIRE(slab->slots_per_slab() == std::uint32_t(100));
     }
 
     SUBCASE("all slots start not alive") {
@@ -104,7 +104,7 @@ TEST_CASE("Slab: creation")
         auto slab = TestSlab::create(8u);
 
         for (std::uint32_t i = 0; i < 8; ++i) {
-            REQUIRE(slab->slot(Index{i}).version() == 0u);
+            REQUIRE(slab->slot(Index{i}).version() == std::uint8_t(0));
         }
     }
 }
@@ -115,8 +115,8 @@ TEST_CASE("Slab: slot access")
 
     SUBCASE("slots are default initialized") {
         for (std::uint32_t i = 0; i < 8; ++i) {
-            REQUIRE(slab->slot(i).version() == 0);
-            REQUIRE(slab->slot(i).next() == 0);
+            REQUIRE(slab->slot(i).version() == std::uint8_t(0));
+            REQUIRE(slab->slot(i).next() == std::uint8_t(0));
         }
     }
 
@@ -125,16 +125,16 @@ TEST_CASE("Slab: slot access")
         slab->slot(3).set_version(TestSlab::version_type{4});
         slab->slot(7).set_version(TestSlab::version_type{8});
 
-        REQUIRE(slab->slot(0).version() == 1);
-        REQUIRE(slab->slot(3).version() == 4);
-        REQUIRE(slab->slot(7).version() == 8);
+        REQUIRE(slab->slot(0).version() == std::uint8_t(1));
+        REQUIRE(slab->slot(3).version() == std::uint8_t(4));
+        REQUIRE(slab->slot(7).version() == std::uint8_t(8));
     }
 
     SUBCASE("const slot access") {
         slab->slot(0).set_version(TestSlab::version_type{42});
 
         auto const & const_slab = *slab;
-        REQUIRE(const_slab.slot(0).version() == 42);
+        REQUIRE(const_slab.slot(0).version() == std::uint8_t(42));
     }
 }
 
@@ -150,8 +150,8 @@ TEST_CASE("Slab: emplace")
     SUBCASE("emplace returns current version") {
         // Slot starts at version 0
         auto [ver, next] = slab->emplace(Index(0u), 42);
-        REQUIRE(ver == 0);
-        REQUIRE(slab->slot(0).value() == 42);
+        REQUIRE(ver == std::uint8_t(0));
+        REQUIRE(slab->slot(0).value() == std::uint8_t(42));
     }
 
     SUBCASE("emplace sets alive bit") {
@@ -165,8 +165,8 @@ TEST_CASE("Slab: emplace")
         slab->slot(0).set_version(TestSlab::version_type{5});
 
         auto [ver, next] = slab->emplace(Index{0}, 100);
-        REQUIRE(ver == 5);
-        REQUIRE(slab->slot(0).value() == 100);
+        REQUIRE(ver == std::uint8_t(5));
+        REQUIRE(slab->slot(0).value() == std::uint8_t(100));
         REQUIRE(slab->is_alive(Index{0}));
     }
 
@@ -176,10 +176,10 @@ TEST_CASE("Slab: emplace")
         slab->emplace(Index(2), 300);
         slab->emplace(Index(3), 400);
 
-        REQUIRE(slab->slot(0).value() == 100);
-        REQUIRE(slab->slot(1).value() == 200);
-        REQUIRE(slab->slot(2).value() == 300);
-        REQUIRE(slab->slot(3).value() == 400);
+        REQUIRE(slab->slot(0).value() == std::uint8_t(100));
+        REQUIRE(slab->slot(1).value() == std::uint8_t(200));
+        REQUIRE(slab->slot(2).value() == std::uint16_t(300));
+        REQUIRE(slab->slot(3).value() == std::uint16_t(400));
 
         for (std::uint32_t i = 0; i < 4; ++i) {
             REQUIRE(slab->is_alive(Index{i}));
@@ -202,10 +202,10 @@ TEST_CASE("Slab: destroy")
 
     SUBCASE("destroy increments version") {
         slab->emplace(Index{0}, 42);
-        REQUIRE(slab->slot(0).version() == 0);
+        REQUIRE(slab->slot(0).version() == std::uint8_t(0));
 
         slab->destroy(Index{0});
-        REQUIRE(slab->slot(0).version() == 1);
+        REQUIRE(slab->slot(0).version() == std::uint8_t(1));
     }
 
     SUBCASE("destroy returns true when slot can be reused") {
@@ -221,31 +221,31 @@ TEST_CASE("Slab: version exhaustion with 2-bit version")
     auto slab = SmallVersionSlab::create(4u);
 
     // max_version for 2 bits is 0b11 = 3
-    REQUIRE(SmallVersionSlab::max_version == 3);
+    REQUIRE(SmallVersionSlab::max_version == std::uint8_t(3));
 
     SUBCASE("slot becomes dead when version reaches max") {
         // Version 0 -> emplace -> destroy -> version 1
         slab->emplace(Index{0}, 1);
         REQUIRE(slab->destroy(Index{0}));
-        REQUIRE(slab->slot(0).version() == 1);
+        REQUIRE(slab->slot(0).version() == std::uint8_t(1));
 
         // Version 1 -> emplace -> destroy -> version 2
         slab->emplace(Index{0}, 2);
         REQUIRE(slab->destroy(Index{0}));
-        REQUIRE(slab->slot(0).version() == 2);
+        REQUIRE(slab->slot(0).version() == std::uint8_t(2));
 
         // Version 2 -> emplace -> destroy -> version 3
         slab->emplace(Index{0}, 3);
         REQUIRE(slab->destroy(Index{0}));
-        REQUIRE(slab->slot(0).version() == 3);
+        REQUIRE(slab->slot(0).version() == std::uint8_t(3));
 
         // Version 3 (max) -> emplace -> destroy -> slot is DEAD
         slab->emplace(Index{0}, 4);
         bool can_reuse = slab->destroy(Index{0});
         REQUIRE_FALSE(can_reuse);
-        REQUIRE(slab->dead_count() == 1);
+        REQUIRE(slab->dead_count() == std::uint32_t(1));
         // Version stays at max (not incremented further)
-        REQUIRE(slab->slot(0).version() == 3);
+        REQUIRE(slab->slot(0).version() == std::uint8_t(3));
     }
 
     SUBCASE("dead count tracks exhausted slots") {
@@ -257,7 +257,7 @@ TEST_CASE("Slab: version exhaustion with 2-bit version")
             }
         }
 
-        REQUIRE(slab->dead_count() == 4);
+        REQUIRE(slab->dead_count() == std::uint32_t(4));
         REQUIRE(slab->dead_count() == slab->slots_per_slab());
     }
 }
@@ -272,7 +272,7 @@ TEST_CASE("Slab: reset_dead_count")
         slab->emplace(Index{0}, use);
         slab->destroy(Index{0});
     }
-    REQUIRE(slab->dead_count() == 1);
+    REQUIRE(slab->dead_count() == std::uint32_t(1));
 }
 
 // ============================================================================
@@ -420,8 +420,8 @@ TEST_CASE("Slab: non-trivial value types")
         slab->emplace(Index{0}, std::string(1000, 'x'));
         slab->emplace(Index{1}, std::string(1000, 'y'));
 
-        REQUIRE(slab->slot(0).value().size() == 1000);
-        REQUIRE(slab->slot(1).value().size() == 1000);
+        REQUIRE(slab->slot(0).value().size() == std::uint16_t(1000));
+        REQUIRE(slab->slot(1).value().size() == std::uint16_t(1000));
 
         slab->destroy(Index{0});
         slab->destroy(Index{1});
@@ -443,25 +443,27 @@ TEST_CASE("Slab: free-list setup pattern")
     std::uint32_t const null_index = 0xFFFF'FFFF;
 
     // Simulate the free-list initialization pattern from the design
+    // Note: set_next uses slot's index_type (Size64), not slab's index_type
+    using SlotIndex = TestSlab::slot_type::index_type;
     for (std::uint32_t i = 0; i < 7; ++i) {
-        slab->slot(i).set_next(TestSlab::index_type{base_index + i + 1});
+        slab->slot(i).set_next(SlotIndex{base_index + i + 1});
     }
-    slab->slot(7).set_next(TestSlab::index_type{null_index});
+    slab->slot(7).set_next(SlotIndex{null_index});
 
     SUBCASE("free list chain is correct") {
-        REQUIRE(slab->slot(0).next() == 101);
-        REQUIRE(slab->slot(1).next() == 102);
-        REQUIRE(slab->slot(2).next() == 103);
-        REQUIRE(slab->slot(3).next() == 104);
-        REQUIRE(slab->slot(4).next() == 105);
-        REQUIRE(slab->slot(5).next() == 106);
-        REQUIRE(slab->slot(6).next() == 107);
+        REQUIRE(slab->slot(0).next() == std::uint8_t(101));
+        REQUIRE(slab->slot(1).next() == std::uint8_t(102));
+        REQUIRE(slab->slot(2).next() == std::uint8_t(103));
+        REQUIRE(slab->slot(3).next() == std::uint8_t(104));
+        REQUIRE(slab->slot(4).next() == std::uint8_t(105));
+        REQUIRE(slab->slot(5).next() == std::uint8_t(106));
+        REQUIRE(slab->slot(6).next() == std::uint8_t(107));
         REQUIRE(slab->slot(7).next() == null_index);
     }
 
     SUBCASE("all versions are 0") {
         for (std::uint32_t i = 0; i < 8; ++i) {
-            REQUIRE(slab->slot(i).version() == 0);
+            REQUIRE(slab->slot(i).version() == std::uint8_t(0));
         }
     }
 
@@ -479,49 +481,51 @@ TEST_CASE("Slab: free-list setup pattern")
 TEST_CASE("Slab: lifecycle simulation")
 {
     using Index = SmallVersionSlab::index_type;
+    using SlotIndex = SmallVersionSlab::slot_type::index_type;
     auto slab = SmallVersionSlab::create(4u);
     std::uint32_t const null_index = 0xFFFF'FFFF;
 
     // Initial state: all slots free, linked together
-    slab->slot(0).set_next(SmallVersionSlab::index_type{1});
-    slab->slot(1).set_next(SmallVersionSlab::index_type{2});
-    slab->slot(2).set_next(SmallVersionSlab::index_type{3});
-    slab->slot(3).set_next(SmallVersionSlab::index_type{null_index});
+    slab->slot(0).set_next(SlotIndex{1});
+    slab->slot(1).set_next(SlotIndex{2});
+    slab->slot(2).set_next(SlotIndex{3});
+    slab->slot(3).set_next(SlotIndex{null_index});
 
     // Allocate slot 0 (remove from free list head)
     auto free_head = slab->slot(0).next(); // = 1
     auto [ver0, next0] = slab->emplace(Index{0}, 100);
 
-    REQUIRE(free_head == 1);
-    REQUIRE(ver0 == 0);
-    REQUIRE(slab->slot(0).value() == 100);
+    REQUIRE(free_head == std::uint32_t(1));
+    REQUIRE(ver0 == std::uint8_t(0));
+    REQUIRE(slab->slot(0).value() == std::uint8_t(100));
     REQUIRE(slab->is_alive(Index{0}));
 
     // Allocate slot 1
     free_head = slab->slot(1).next(); // = 2
     auto [ver1, next1] = slab->emplace(Index{1}, 200);
 
-    REQUIRE(free_head == 2);
-    REQUIRE(ver1 == 0);
-    REQUIRE(slab->slot(1).value() == 200);
+    REQUIRE(free_head == std::uint32_t(2));
+    REQUIRE(ver1 == std::uint8_t(0));
+    REQUIRE(slab->slot(1).value() == std::uint8_t(200));
     REQUIRE(slab->is_alive(Index{1}));
 
     // Free slot 0 (return to free list)
     bool can_reuse = slab->destroy(Index{0});
     REQUIRE(can_reuse);
     REQUIRE_FALSE(slab->is_alive(Index{0}));
-    REQUIRE(slab->slot(0).version() == 1);
+    REQUIRE(slab->slot(0).version() == std::uint8_t(1));
 
     // Set slot 0 to point to old head (slot 2)
-    slab->slot(0).set_next(SmallVersionSlab::index_type{free_head}); // 0 -> 2
+    slab->slot(0).set_next(SlotIndex{free_head}); // 0 -> 2
 
     // Re-allocate slot 0
     free_head = slab->slot(0).next(); // = 2
     auto [ver0_reuse, next0_reuse] = slab->emplace(Index{0}, 101);
 
-    REQUIRE(free_head == 2);
-    REQUIRE(ver0_reuse == 1); // version incremented from previous use
-    REQUIRE(slab->slot(0).value() == 101);
+    REQUIRE(free_head == std::uint32_t(2));
+    REQUIRE(
+        ver0_reuse == std::uint8_t(1)); // version incremented from previous use
+    REQUIRE(slab->slot(0).value() == std::uint8_t(101));
     REQUIRE(slab->is_alive(Index{0}));
 }
 
@@ -539,15 +543,16 @@ TEST_CASE("Slab: property-based slot access")
         RC_ASSERT(slab->slots_per_slab() == size);
 
         // Set unique values in each slot
+        using SlotIndex = TestSlab::slot_type::index_type;
         for (std::uint32_t i = 0; i < size; ++i) {
             slab->slot(i).set_version(TestSlab::version_type{i * 2});
-            slab->slot(i).set_next(TestSlab::index_type{i * 3});
+            slab->slot(i).set_next(SlotIndex{i * 3});
         }
 
         // Verify all values
         for (std::uint32_t i = 0; i < size; ++i) {
-            RC_ASSERT(slab->slot(i).version() == i * 2);
-            RC_ASSERT(slab->slot(i).next() == i * 3);
+            RC_ASSERT(slab->slot(i).version() == i * 2u);
+            RC_ASSERT(slab->slot(i).next() == i * 3u);
         }
     });
 }
@@ -560,7 +565,7 @@ TEST_CASE("Slab: property-based emplace/destroy cycle")
         auto slab = TestSlab::create(4u);
 
         auto ver = slab->emplace(Index{0}, value).version;
-        RC_ASSERT(ver == 0);
+        RC_ASSERT(ver == std::uint8_t(0));
         RC_ASSERT(slab->slot(0).value() == value);
         RC_ASSERT(slab->is_alive(Index{0}));
 
@@ -615,8 +620,8 @@ TEST_CASE("Slab: type traits")
     }
 
     SUBCASE("max_version is correct") {
-        REQUIRE(TestSlab::max_version == 0xFFFF'FFFF);
-        REQUIRE(SmallVersionSlab::max_version == 3);
+        REQUIRE(TestSlab::max_version == std::uint32_t(0xFFFF'FFFF));
+        REQUIRE(SmallVersionSlab::max_version == std::uint8_t(3));
     }
 
     REQUIRE(true);
@@ -638,7 +643,7 @@ TEST_CASE("Slab: edge cases")
             slab->destroy(Index{0});
         }
 
-        REQUIRE(slab->dead_count() == 1);
+        REQUIRE(slab->dead_count() == std::uint32_t(1));
         REQUIRE(slab->dead_count() == slab->slots_per_slab());
     }
 
@@ -646,7 +651,7 @@ TEST_CASE("Slab: edge cases")
         using Index = TestSlab::index_type;
         auto slab = TestSlab::create(4096u);
 
-        REQUIRE(slab->slots_per_slab() == 4096);
+        REQUIRE(slab->slots_per_slab() == std::uint32_t(4096));
 
         // Emplace in first, middle, and last slots
         slab->emplace(Index{0}, 1);
@@ -701,26 +706,29 @@ TEST_CASE("Slab: different type configurations")
     SUBCASE("16-bit indices") {
         using Size = Size32;
         using Slab16 = Slab<SlabTraits<int, Index16, Version16, Size>>;
+        using SlotIndex = Slab16::slot_type::index_type;
         auto slab = Slab16::create(4u);
 
-        slab->slot(0).set_next(Slab16::index_type{65535});
+        slab->slot(0).set_next(SlotIndex{65535});
         slab->slot(0).set_version(Slab16::version_type{65535});
 
-        REQUIRE(slab->slot(0).next() == 65535);
-        REQUIRE(slab->slot(0).version() == 65535);
-        REQUIRE(Slab16::max_version == 65535);
+        REQUIRE(slab->slot(0).next() == std::uint32_t(65535));
+        REQUIRE(slab->slot(0).version() == std::uint16_t(65535));
+        REQUIRE(Slab16::max_version == std::uint16_t(65535));
     }
 
     SUBCASE("64-bit indices") {
         using Size = Size64;
         using Slab64 = Slab<SlabTraits<int, Index64, Version64, Size>>;
+        using SlotIndex = Slab64::slot_type::index_type;
         auto slab = Slab64::create(4u);
 
-        slab->slot(0).set_next(Slab64::index_type{0xFFFF'FFFF'FFFF'FFFF});
+        slab->slot(0).set_next(SlotIndex{0xFFFF'FFFF'FFFF'FFFF});
         slab->slot(0).set_version(Slab64::version_type{0xFFFF'FFFF'FFFF'FFFF});
 
-        REQUIRE(slab->slot(0).next() == 0xFFFF'FFFF'FFFF'FFFF);
-        REQUIRE(slab->slot(0).version() == 0xFFFF'FFFF'FFFF'FFFF);
+        REQUIRE(slab->slot(0).next() == std::uint64_t(0xFFFF'FFFF'FFFF'FFFF));
+        REQUIRE(
+            slab->slot(0).version() == std::uint64_t(0xFFFF'FFFF'FFFF'FFFF));
     }
 
     SUBCASE("mixed sizes") {
@@ -728,14 +736,14 @@ TEST_CASE("Slab: different type configurations")
         using MixedSlab = Slab<SlabTraits<int, Index8, Version4, Size>>;
         auto slab = MixedSlab::create(4u);
 
-        REQUIRE(MixedSlab::max_version == 15); // 4 bits = 0xF
+        REQUIRE(MixedSlab::max_version == std::uint8_t(15)); // 4 bits = 0xF
 
         // Use slot through 16 versions (0-15), then it's dead
         for (int use = 0; use < 16; ++use) {
             slab->emplace(Index8{0}, use);
             slab->destroy(Index8{0});
         }
-        REQUIRE(slab->dead_count() == 1);
+        REQUIRE(slab->dead_count() == std::uint32_t(1));
     }
 }
 

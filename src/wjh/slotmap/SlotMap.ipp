@@ -301,8 +301,7 @@ handle_slot_removal(
                     std::tuple<std::size_t, index_type, size_type>> {
                 // Check if there's room for more slabs in the index space
                 auto const new_base = next_slab_base_index_;
-                if (size_type(new_base) + size_type(slots_per_slab_) >
-                    max_slots) {
+                if (new_base + slots_per_slab_ > max_slots.value) {
                     return std::nullopt;
                 }
 
