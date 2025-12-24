@@ -19,7 +19,10 @@
 #include <memory>
 #include <new>
 
-namespace wjh::slotmap::detail {
+namespace wjh::slotmap {
+WJH_SLOTMAP_NAMESPACE_BEGIN
+
+namespace detail {
 
 template <
     typename ValueT,
@@ -530,6 +533,9 @@ private:
     naked_size_type slots_per_slab_;
 };
 
-} // namespace wjh::slotmap::detail
+} // namespace detail
+
+WJH_SLOTMAP_NAMESPACE_END
+} // namespace wjh::slotmap
 
 #endif // WJH_SLOTMAP_0843744742F143B5826D3DA7D551B2EC

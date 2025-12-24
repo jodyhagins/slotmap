@@ -21,6 +21,12 @@ if (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
     option(WJH_SLOTMAP_BUILD_BENCHMARKS "whether or not to build benchmarks (Release only)" OFF)
 endif ()
 
+# ABI versioning options (for binary distribution)
+option(WJH_SLOTMAP_ENABLE_INLINE_NAMESPACE
+    "Enable inline namespace for ABI versioning (useful for binary distribution)" OFF)
+set(WJH_SLOTMAP_INLINE_NAMESPACE_NAME "v${PROJECT_VERSION_MAJOR}_${PROJECT_VERSION_MINOR}"
+    CACHE STRING "Inline namespace name (only used when ENABLE_INLINE_NAMESPACE is ON)")
+
 include(FetchContent)
 include(CTest)
 include(CompileOptions)

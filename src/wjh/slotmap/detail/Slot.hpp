@@ -10,6 +10,8 @@
 #ifndef WJH_SLOTMAP_210A58D772C142B58C2FDB99480EA93F
 #define WJH_SLOTMAP_210A58D772C142B58C2FDB99480EA93F
 
+#include "../abi.hpp"
+
 #include <array>
 #include <bit>
 #include <cassert>
@@ -20,7 +22,10 @@
 #include <type_traits>
 #include <utility>
 
-namespace wjh::slotmap::detail {
+namespace wjh::slotmap {
+WJH_SLOTMAP_NAMESPACE_BEGIN
+
+namespace detail {
 
 template <
     typename ValueT,
@@ -326,6 +331,9 @@ private:
         << (version_digits - 1);
 };
 
-} // namespace wjh::slotmap::detail
+} // namespace detail
+
+WJH_SLOTMAP_NAMESPACE_END
+} // namespace wjh::slotmap
 
 #endif // WJH_SLOTMAP_210A58D772C142B58C2FDB99480EA93F

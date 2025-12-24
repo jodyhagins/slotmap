@@ -14,6 +14,7 @@
 #include "detail/SlotMap.hpp"
 
 namespace wjh::slotmap {
+WJH_SLOTMAP_NAMESPACE_BEGIN
 
 /**
  * Traits for SlotMap configuration.
@@ -67,6 +68,7 @@ public:
 template <typename T>
 concept TraitsC = detail::TraitsC<T>;
 
+WJH_SLOTMAP_NAMESPACE_END
 } // namespace wjh::slotmap
 
 #endif // WJH_SLOTMAP_E328214D1BC040C6BCA7583610D8EDEF

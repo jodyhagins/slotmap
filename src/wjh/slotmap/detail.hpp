@@ -18,7 +18,10 @@
 #include <limits>
 #include <type_traits>
 
-namespace wjh::slotmap::detail {
+namespace wjh::slotmap {
+WJH_SLOTMAP_NAMESPACE_BEGIN
+
+namespace detail {
 
 template <unsigned NumBits, typename = std::true_type>
 struct type_with_at_least;
@@ -242,6 +245,9 @@ hash_bits(unsigned __int128 x) noexcept
 }
 #endif
 
-} // namespace wjh::slotmap::detail
+} // namespace detail
+
+WJH_SLOTMAP_NAMESPACE_END
+} // namespace wjh::slotmap
 
 #endif // WJH_SLOTMAP_CA3F4DEEB84042E584DF898CE8D8E93A

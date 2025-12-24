@@ -15,6 +15,7 @@
 #include <tuple>
 
 namespace wjh::slotmap {
+WJH_SLOTMAP_NAMESPACE_BEGIN
 
 template <KeyC, SlotsPerSlab, UseAliveBitForLookup, DefaultUserBits>
 struct Traits;
@@ -555,6 +556,8 @@ max_total_objects()
 }
 
 } // namespace detail
+
+WJH_SLOTMAP_NAMESPACE_END
 } // namespace wjh::slotmap
 
 #endif // WJH_SLOTMAP_E253A0A968334A30AADC240EA20ABEF2

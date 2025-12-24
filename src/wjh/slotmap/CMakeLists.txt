@@ -13,8 +13,11 @@ target_sources(wjh_slotmap
         FILE_SET HEADERS
         BASE_DIRS "${PROJECT_SOURCE_DIR}/src"
         FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/abi.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/Key.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/SlotMap.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Traits.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/types.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/detail.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/detail/Slot.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/detail/Slab.hpp"
@@ -39,6 +42,16 @@ target_compile_features(wjh_slotmap
 target_compile_definitions(wjh_slotmap
         INTERFACE
         $<$<CONFIG:Debug>:WJH_SLOTMAP_DEBUG_MODE>)
+
+# ABI versioning support via inline namespaces
+# When enabled, all symbols are placed in an inline namespace to prevent
+# ODR violations when different library versions are used together.
+if (WJH_SLOTMAP_ENABLE_INLINE_NAMESPACE)
+    target_compile_definitions(wjh_slotmap
+            INTERFACE
+            WJH_SLOTMAP_USE_INLINE_NAMESPACE=1
+            WJH_SLOTMAP_INLINE_NAMESPACE_NAME=${WJH_SLOTMAP_INLINE_NAMESPACE_NAME})
+endif ()
 
 if (WJH_SLOTMAP_BUILD_TESTS)
     enable_testing()

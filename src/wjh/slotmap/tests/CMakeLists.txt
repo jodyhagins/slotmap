@@ -82,3 +82,10 @@ add_slotmap_test(
     SOURCES
         SlotMap_edge_cases_ut.cpp
 )
+
+add_slotmap_test(
+    TARGET headers_ut
+    NAME "SlotMap Headers"
+    SOURCES
+        headers_ut.cpp
+)

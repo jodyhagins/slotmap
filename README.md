@@ -232,6 +232,34 @@ cmake --build .
 ctest -jN --output-on-failure
 ```
 
+### ABI Versioning (Inline Namespaces)
+
+The library supports optional inline namespace versioning for ABI safety. When enabled, all symbols include a version identifier in their mangled names, catching version mismatches at link time instead of runtime.
+
+**Default (disabled):**
+```cpp
+#include <wjh/slotmap.hpp>
+// Symbols: wjh::slotmap::Key, wjh::slotmap::SlotMap
+```
+
+**Enabled via CMake:**
+```bash
+cmake -DWJH_SLOTMAP_ENABLE_INLINE_NAMESPACE=ON \
+      -DWJH_SLOTMAP_INLINE_NAMESPACE_NAME=v1 ..
+# Symbols: wjh::slotmap::v1::Key (but wjh::slotmap::Key still works)
+```
+
+**Enabled via preprocessor (before any includes):**
+```cpp
+#define WJH_SLOTMAP_USE_INLINE_NAMESPACE 1
+#define WJH_SLOTMAP_INLINE_NAMESPACE_NAME v1
+#include <wjh/slotmap.hpp>
+```
+
+When enabled, user code remains unchanged - `wjh::slotmap::Key` resolves transparently to `wjh::slotmap::v1::Key`. The version only appears in mangled symbol names, causing linker errors if mismatched versions are combined.
+
+This is primarily useful for binary distribution or complex dependency scenarios. For typical header-only usage where everything recompiles together, it's unnecessary overhead.
+
 ### Debug Mode
 
 The library includes debug-mode assertions that help catch misuse during development:

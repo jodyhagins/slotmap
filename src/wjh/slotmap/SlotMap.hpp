@@ -9,6 +9,7 @@
 
 #include "Key.hpp"
 #include "Traits.hpp"
+#include "abi.hpp"
 #include "types.hpp"
 
 #include "detail/Slab.hpp"
@@ -23,6 +24,7 @@
 #include <vector>
 
 namespace wjh::slotmap {
+WJH_SLOTMAP_NAMESPACE_BEGIN
 
 // ============================================================================
 // Callback Concepts
@@ -556,6 +558,7 @@ private:
 template <typename T, auto... vs>
 using SlotMap = BasicSlotMap<detail::helper_t<T, vs...>>;
 
+WJH_SLOTMAP_NAMESPACE_END
 } // namespace wjh::slotmap
 
 namespace wjh {

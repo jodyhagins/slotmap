@@ -7,10 +7,13 @@
 #ifndef WJH_SLOTMAP_153C55E8FEB34AA9AB579FCE39E431F4
 #define WJH_SLOTMAP_153C55E8FEB34AA9AB579FCE39E431F4
 
+#include "abi.hpp"
+
 #include <cstddef>
 #include <cstdint>
 
 namespace wjh::slotmap {
+WJH_SLOTMAP_NAMESPACE_BEGIN
 
 /**
  * The number of bits to use for the index part of the key.
@@ -294,6 +297,7 @@ operator ""_ub (unsigned long long value) noexcept
 
 } // namespace literals
 
+WJH_SLOTMAP_NAMESPACE_END
 } // namespace wjh::slotmap
 
 namespace wjh::slotmap_literals {

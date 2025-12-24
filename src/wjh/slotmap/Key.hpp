@@ -7,6 +7,7 @@
 #ifndef WJH_SLOTMAP_073D1EC2FEF04177914D3CC646306810
 #define WJH_SLOTMAP_073D1EC2FEF04177914D3CC646306810
 
+#include "abi.hpp"
 #include "detail.hpp"
 #include "types.hpp"
 
@@ -16,6 +17,7 @@
 #include <functional>
 
 namespace wjh::slotmap {
+WJH_SLOTMAP_NAMESPACE_BEGIN
 
 /**
  * A type-safe, bit-packed key with compile-time validation
@@ -331,6 +333,7 @@ concept KeyC = is_key_v<T>;
 template <typename T, IndexBits I, VersionBits V, UserBits U = UserBits(0)>
 using TrivialKey = slotmap::Key<detail::Trivial<T>, I, V, U>;
 
+WJH_SLOTMAP_NAMESPACE_END
 } // namespace wjh::slotmap
 
 namespace wjh {

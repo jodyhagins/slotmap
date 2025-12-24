@@ -9,7 +9,10 @@
 #ifndef WJH_SLOTMAP_A09851B59F134EB0933FCAA717630C5D
 #define WJH_SLOTMAP_A09851B59F134EB0933FCAA717630C5D
 
+#include <wjh/slotmap/abi.hpp>
+
 namespace wjh::slotmap {
+WJH_SLOTMAP_NAMESPACE_BEGIN
 
 inline constexpr int version_major = @PROJECT_VERSION_MAJOR@;
 inline constexpr int version_minor = @PROJECT_VERSION_MINOR@;
@@ -17,6 +20,15 @@ inline constexpr int version_patch = @PROJECT_VERSION_PATCH@;
 
 inline constexpr const char * version_string = "@PROJECT_VERSION@";
 
+/// Compound version as single integer: major * 10000 + minor * 100 + patch
+inline constexpr int version =
+    version_major * 10000 + version_minor * 100 + version_patch;
+
+WJH_SLOTMAP_NAMESPACE_END
 } // namespace wjh::slotmap
+
+/// Check if library version is at least the specified version
+#define WJH_SLOTMAP_VERSION_AT_LEAST(major, minor, patch) \
+    (::wjh::slotmap::version >= ((major) * 10000 + (minor) * 100 + (patch)))
 
 #endif // WJH_SLOTMAP_A09851B59F134EB0933FCAA717630C5D
