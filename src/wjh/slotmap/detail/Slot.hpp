@@ -302,7 +302,7 @@ private:
     {
         if constexpr (has_embedded_alive_bit) {
             auto version = std::bit_cast<naked_version_type>(version_bytes_);
-            version &= ~alive_bit;
+            version &= static_cast<naked_version_type>(~alive_bit);
             version_bytes_ = std::bit_cast<decltype(version_bytes_)>(version);
         }
     }

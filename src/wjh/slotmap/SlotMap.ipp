@@ -12,7 +12,7 @@ namespace wjh::slotmap {
 template <TraitsC TraitsT>
 BasicSlotMap<TraitsT>::
 BasicSlotMap()
-requires traits_type::is_single_slab
+requires(traits_type::is_single_slab)
 : slots_per_slab_{max_slots}
 { }
 

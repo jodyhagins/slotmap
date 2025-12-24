@@ -39,9 +39,9 @@ public:
     using Base::Base;
 
     template <typename SizeT>
-    explicit SlotMap(SizeT slots_per_slab)
+    explicit SlotMap(SizeT slab_size)
     requires std::is_integral_v<SizeT>
-    : Base(size_type{static_cast<naked_size_type>(slots_per_slab)})
+    : Base(size_type{static_cast<naked_size_type>(slab_size)})
     { }
 };
 

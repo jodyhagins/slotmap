@@ -171,7 +171,7 @@ public:
      * @throws std::bad_alloc if initial slab allocation fails
      */
     BasicSlotMap()
-    requires traits_type::is_single_slab;
+    requires(traits_type::is_single_slab);
 
     BasicSlotMap()
     requires(not traits_type::is_single_slab);
