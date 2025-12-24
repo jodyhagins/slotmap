@@ -51,11 +51,14 @@ struct type_with_at_least<N, std::bool_constant<(N <= 64 && N > 32)>>
     using type = std::uint64_t;
 };
 #ifdef __SIZEOF_INT128__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 template <unsigned N>
 struct type_with_at_least<N, std::bool_constant<(N <= 128 && N > 64)>>
 {
     using type = unsigned __int128;
 };
+#pragma GCC diagnostic pop
 #endif
 
 template <unsigned N>
@@ -84,11 +87,14 @@ struct storage_type<64>
 };
 
 #ifdef __SIZEOF_INT128__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 template <>
 struct storage_type<128>
 {
     using type = unsigned __int128;
 };
+#pragma GCC diagnostic pop
 #endif
 
 // Helper alias for cleaner code
@@ -234,6 +240,8 @@ hash_bits(std::uint64_t x) noexcept
 }
 
 #ifdef __SIZEOF_INT128__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 // Hash for 128-bit values
 constexpr std::size_t
 hash_bits(unsigned __int128 x) noexcept
@@ -243,6 +251,7 @@ hash_bits(unsigned __int128 x) noexcept
     // Combine the two halves with another round of mixing
     return static_cast<std::size_t>(splitmix64(lower ^ splitmix64(upper)));
 }
+#pragma GCC diagnostic pop
 #endif
 
 } // namespace detail
