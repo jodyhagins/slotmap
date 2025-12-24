@@ -42,20 +42,25 @@ configure_file(
 # Configuration files for find_package() support
 # Only generate when building as top-level project
 if (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
-    configure_file(
-            "${CMAKE_CURRENT_SOURCE_DIR}/cmake/wjh_slotmapVersion.cmake.in"
-            "${CMAKE_CURRENT_BINARY_DIR}/cmake/wjh_slotmapVersion.cmake"
-            @ONLY
-    )
-    configure_file(
-            "${CMAKE_CURRENT_SOURCE_DIR}/cmake/wjh_slotmapConfig.cmake.in"
-            "${CMAKE_CURRENT_BINARY_DIR}/cmake/wjh_slotmapConfig.cmake"
-            COPYONLY
+    include(CMakePackageConfigHelpers)
+    include(GNUInstallDirs)
+
+    # Generate version file with SameMajorVersion compatibility
+    write_basic_package_version_file(
+            "${CMAKE_CURRENT_BINARY_DIR}/cmake/wjh_slotmapConfigVersion.cmake"
+            VERSION ${PROJECT_VERSION}
+            COMPATIBILITY SameMajorVersion
     )
 
-    include(GNUInstallDirs)
+    # Generate config file with proper path handling
+    configure_package_config_file(
+            "${CMAKE_CURRENT_SOURCE_DIR}/cmake/wjh_slotmapConfig.cmake.in"
+            "${CMAKE_CURRENT_BINARY_DIR}/cmake/wjh_slotmapConfig.cmake"
+            INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/wjh_slotmap"
+    )
+
     install(FILES
-            "${CMAKE_CURRENT_BINARY_DIR}/cmake/wjh_slotmapVersion.cmake"
+            "${CMAKE_CURRENT_BINARY_DIR}/cmake/wjh_slotmapConfigVersion.cmake"
             "${CMAKE_CURRENT_BINARY_DIR}/cmake/wjh_slotmapConfig.cmake"
             DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/wjh_slotmap"
     )

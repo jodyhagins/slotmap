@@ -6,14 +6,12 @@
 ## ----------------------------------------------------------------------
 
 ## CMake package config file for find_package() support
+##
+## This file is used by find_package(wjh_slotmap) after installation.
+## For FetchContent usage, the wjh::slotmap target is available directly.
+
+@PACKAGE_INIT@
 
 include("${CMAKE_CURRENT_LIST_DIR}/wjh_slotmapTargets.cmake")
-include("${CMAKE_CURRENT_LIST_DIR}/wjh_slotmapVersion.cmake")
 
-if(wjh_slotmap_FIND_VERSION)
-    if(NOT wjh_slotmap_VERSION VERSION_EQUAL wjh_slotmap_FIND_VERSION)
-        if(wjh_slotmap_FIND_REQUIRED)
-            message(FATAL_ERROR "wjh_slotmap version ${wjh_slotmap_VERSION} does not match required ${wjh_slotmap_FIND_VERSION}")
-        endif()
-    endif()
-endif()
+check_required_components(wjh_slotmap)
