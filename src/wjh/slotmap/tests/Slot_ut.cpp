@@ -419,6 +419,10 @@ TEST_CASE("Slot: edge cases with different index/version types")
 
 TEST_CASE("Slot: value type larger than index type")
 {
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunsafe-buffer-usage"
+#endif
     struct LargeValue
     {
         std::uint64_t data[16];
@@ -445,6 +449,9 @@ TEST_CASE("Slot: value type larger than index type")
     REQUIRE(slot.value() == val);
 
     slot.destroy();
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
 }
 
 TEST_CASE("Slot: value type smaller than index type")

@@ -529,28 +529,20 @@ use(auto & self, key_type key, auto & func)
 
 template <TraitsC TraitsT>
 template <typename F>
-requires UseCallbackC<
-    F,
-    typename BasicSlotMap<TraitsT>::key_type,
-    typename BasicSlotMap<TraitsT>::mapped_type>
-[[nodiscard]]
 auto
 BasicSlotMap<TraitsT>::
 use(key_type key, F && func)
+requires UseCallbackC<F, key_type, mapped_type>
 {
     return use(*this, key, func);
 }
 
 template <TraitsC TraitsT>
 template <typename F>
-requires ConstUseCallbackC<
-    F,
-    typename BasicSlotMap<TraitsT>::key_type,
-    typename BasicSlotMap<TraitsT>::mapped_type>
-[[nodiscard]]
 auto
 BasicSlotMap<TraitsT>::
 use(key_type key, F && func) const
+requires ConstUseCallbackC<F, key_type, mapped_type>
 {
     return use(*this, key, func);
 }
@@ -582,26 +574,20 @@ invoke_for_each(F & func, KeyT key, ValT & val, [[maybe_unused]] Options & opts)
 
 template <TraitsC TraitsT>
 template <typename F>
-requires ForEachCallbackC<
-    F,
-    typename BasicSlotMap<TraitsT>::key_type,
-    typename BasicSlotMap<TraitsT>::mapped_type>
 BasicSlotMap<TraitsT>::size_type
 BasicSlotMap<TraitsT>::
 for_each(F && func)
+requires ForEachCallbackC<F, key_type, mapped_type>
 {
     return for_each(*this, func);
 }
 
 template <TraitsC TraitsT>
 template <typename F>
-requires ConstForEachCallbackC<
-    F,
-    typename BasicSlotMap<TraitsT>::key_type,
-    typename BasicSlotMap<TraitsT>::mapped_type>
 BasicSlotMap<TraitsT>::size_type
 BasicSlotMap<TraitsT>::
 for_each(F && func) const
+requires ConstForEachCallbackC<F, key_type, mapped_type>
 {
     return for_each(*this, func);
 }
@@ -821,16 +807,20 @@ statistics() const noexcept
 
     // Derived metrics
     stats.slot_utilization = stats.remaining_slots > 0
-        ? static_cast<double>(stats.active_slots) / stats.remaining_slots
+        ? static_cast<double>(stats.active_slots) /
+            static_cast<double>(stats.remaining_slots)
         : 0.0;
     stats.dead_slot_ratio = stats.allocated_slots > 0
-        ? static_cast<double>(stats.dead_slots) / stats.allocated_slots
+        ? static_cast<double>(stats.dead_slots) /
+            static_cast<double>(stats.allocated_slots)
         : 0.0;
     stats.lifetime_exhaustion = stats.max_objects > 0
-        ? static_cast<double>(stats.objects_created) / stats.max_objects
+        ? static_cast<double>(stats.objects_created) /
+            static_cast<double>(stats.max_objects)
         : 0.0;
     stats.bytes_per_object = stats.active_slots > 0
-        ? static_cast<double>(stats.total_memory_bytes) / stats.active_slots
+        ? static_cast<double>(stats.total_memory_bytes) /
+            static_cast<double>(stats.active_slots)
         : 0.0;
 
     return stats;

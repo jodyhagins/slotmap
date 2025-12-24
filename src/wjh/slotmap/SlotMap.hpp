@@ -265,9 +265,9 @@ public:
      * @return true/false for void callbacks, std::optional<R> otherwise.
      */
     template <typename F>
-    requires UseCallbackC<F, key_type, mapped_type>
     [[nodiscard]]
-    auto use(key_type key, F && func);
+    auto use(key_type key, F && func)
+    requires UseCallbackC<F, key_type, mapped_type>;
 
     /**
      * Access an element by key with callback.
@@ -293,9 +293,9 @@ public:
      * @return true/false for void callbacks, std::optional<R> otherwise.
      */
     template <typename F>
-    requires ConstUseCallbackC<F, key_type, mapped_type>
     [[nodiscard]]
-    auto use(key_type key, F && func) const;
+    auto use(key_type key, F && func) const
+    requires ConstUseCallbackC<F, key_type, mapped_type>;
 
     /**
      * Check if a key refers to an alive element.
@@ -424,8 +424,8 @@ public:
      * @note The callback must return void or bool (compile-time enforced).
      */
     template <typename F>
-    requires ForEachCallbackC<F, key_type, mapped_type>
-    size_type for_each(F && func);
+    size_type for_each(F && func)
+    requires ForEachCallbackC<F, key_type, mapped_type>;
 
     /**
      * Iterate over all alive elements.
@@ -447,8 +447,8 @@ public:
      * @note Options.erase is not supported on const overloads.
      */
     template <typename F>
-    requires ConstForEachCallbackC<F, key_type, mapped_type>
-    size_type for_each(F && func) const;
+    size_type for_each(F && func) const
+    requires ConstForEachCallbackC<F, key_type, mapped_type>;
 
     // ========================================================================
     // Capacity
