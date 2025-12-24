@@ -25,12 +25,12 @@ requires(not traits_type::is_single_slab)
 
 template <TraitsC TraitsT>
 BasicSlotMap<TraitsT>::
-BasicSlotMap(size_type slots_per_slab)
+BasicSlotMap(size_type slab_size)
 requires(not traits_type::is_single_slab)
-: traits_type(slots_per_slab)
-, slots_per_slab_{slots_per_slab}
+: traits_type(slab_size)
+, slots_per_slab_{slab_size}
 {
-    validate_slab_size(slots_per_slab);
+    validate_slab_size(slab_size);
 }
 
 template <TraitsC TraitsT>

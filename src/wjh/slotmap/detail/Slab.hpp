@@ -289,7 +289,7 @@ public:
         }
 
         // Increment version for next use
-        ver.value += 1;
+        ++ver.value;
         s.set_version(ver);
         return true;
     }

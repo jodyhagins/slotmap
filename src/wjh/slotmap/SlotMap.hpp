@@ -182,14 +182,14 @@ public:
      * Only available for multi-slab configurations where the slab size
      * can be customized. Single-slab configurations always use all slots.
      *
-     * @param slots_per_slab Number of slots per slab (must be power of 2)
+     * @param slab_size Number of slots per slab (must be power of 2)
      *
-     * @throws std::invalid_argument if slots_per_slab is not a power of 2
+     * @throws std::invalid_argument if slab_size is not a power of 2
      *         or exceeds the maximum index value
      *
      * @throws std::bad_alloc if initial slab allocation fails
      */
-    explicit BasicSlotMap(size_type slots_per_slab)
+    explicit BasicSlotMap(size_type slab_size)
     requires(not traits_type::is_single_slab);
 
     /**

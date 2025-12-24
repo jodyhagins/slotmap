@@ -537,7 +537,8 @@ TEST_CASE("Slab: property-based slot access")
 {
     rc::check("all slots are accessible and independent", []() {
         auto const size_hint = *rc::gen::arbitrary<std::uint8_t>();
-        std::uint32_t size = (size_hint % 100) + 1; // 1-100 slots
+        std::uint32_t size = static_cast<std::uint32_t>(size_hint % 100) +
+            1; // 1-100 slots
         auto slab = TestSlab::create(size);
 
         RC_ASSERT(slab->slots_per_slab() == size);
