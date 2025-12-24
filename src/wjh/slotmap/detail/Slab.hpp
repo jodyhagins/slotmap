@@ -489,19 +489,25 @@ private:
         return std::launder(reinterpret_cast<slot_type const *>(this + 1));
     }
 
+// GCC false positive: slots() returns (this + 1) which cannot be null.
+#ifdef __GNUC__
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wnull-dereference"
+#endif
     std::byte * bitmap() noexcept
     {
-        auto * slot_end = reinterpret_cast<std::byte *>(
-            slots() + slots_per_slab_);
-        return std::launder(slot_end);
+        return std::launder(
+            reinterpret_cast<std::byte *>(slots() + slots_per_slab_));
     }
 
     std::byte const * bitmap() const noexcept
     {
-        auto const * slot_end = reinterpret_cast<std::byte const *>(
-            slots() + slots_per_slab_);
-        return std::launder(slot_end);
+        return std::launder(
+            reinterpret_cast<std::byte const *>(slots() + slots_per_slab_));
     }
+#ifdef __GNUC__
+    #pragma GCC diagnostic pop
+#endif
 
     void set_alive(index_type index, bool alive) noexcept
     {

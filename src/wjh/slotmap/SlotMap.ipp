@@ -209,12 +209,12 @@ allocate_new_slab()
 template <TraitsC TraitsT>
 void
 BasicSlotMap<TraitsT>::
-initialize_slab_free_list(slab_type * slab, index_type base)
+initialize_slab_free_list(slab_type * slab, index_type base_index)
 {
     // Link all slots in the slab into a chain
     // Each slot points to the next, last slot points to old free list head
     auto const limit = static_cast<naked_size_type>(slots_per_slab_ - 1);
-    auto const base_val = static_cast<naked_size_type>(base.value);
+    auto const base_val = static_cast<naked_size_type>(base_index.value);
     for (naked_size_type i = 0; i < limit; ++i) {
         auto const idx = index_type(static_cast<naked_index_type>(i));
         auto const next_val = static_cast<naked_size_type>(base_val + i + 1);
@@ -226,7 +226,7 @@ initialize_slab_free_list(slab_type * slab, index_type base)
     slab->slot(last_idx).set_next(free_list_head_);
 
     // New free list head is first slot in new slab
-    free_list_head_ = size_type(base);
+    free_list_head_ = size_type(base_index);
 }
 
 template <TraitsC TraitsT>
