@@ -476,7 +476,7 @@ private:
      */
     static constexpr std::size_t bitmap_size(size_type slots_per_slab) noexcept
     {
-        return (slots_per_slab.value + 7) / 8;
+        return static_cast<std::size_t>(slots_per_slab.value + 7) / 8;
     }
 
     slot_type * slots() noexcept

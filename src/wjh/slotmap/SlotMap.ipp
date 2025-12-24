@@ -310,7 +310,8 @@ handle_slot_removal(
                 auto const new_idx = this->storage_slab_index(first_index);
 
                 // Update next_slab_base_index_ and free_list_head_
-                next_slab_base_index_ += slots_per_slab_;
+                next_slab_base_index_ = static_cast<naked_size_type>(
+                    next_slab_base_index_ + slots_per_slab_);
                 free_list_head_ = size_type(new_base);
 
                 return std::tuple{new_idx, first_index, free_list_head_};
