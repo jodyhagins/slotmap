@@ -257,12 +257,7 @@ try_emplace(Args &&... args)
     ++size_;
     ++objects_created_;
 
-    // TODO(C24): Allow user to configure a default user bits value via Traits.
-    // Currently all keys from emplace/try_emplace have user_type{0}. Users who
-    // want non-zero default user bits must use key.with_user() after insertion.
-    // Potential implementation: Add DefaultUserBits to Traits and use it here:
-    //   return key_type(idx, ver, user_type{traits_type::default_user_bits});
-    return key_type(idx, ver, user_type{});
+    return key_type(idx, ver, user_type{traits_type::default_user_bits});
 }
 
 template <TraitsC TraitsT>
@@ -634,7 +629,10 @@ for_each(auto & self, auto & func)
             auto const full_idx = index_type(
                 static_cast<naked_index_type>(base_idx + slot_idx.value));
             auto const ver = slab->slot(slot_idx).version();
-            auto const key = key_type(full_idx, ver, user_type{});
+            auto const key = key_type(
+                full_idx,
+                ver,
+                user_type{traits_type::default_user_bits});
             auto & val = slab->slot(slot_idx).value();
 
             using R = decltype(
@@ -777,35 +775,20 @@ statistics() const noexcept
     // max_objects = 2^IndexBits * 2^VersionBits - 1
     // The -1 is because slot 0 starts at version 1 to avoid null key
     //
-    // This computation can overflow std::size_t when index_bits + version_bits
-    // >= 64. We use __uint128_t when available for larger bit counts, and
-    // saturate at SIZE_MAX when the result cannot be represented.
+    // Uses max_objects_type which is __uint128_t when available, otherwise
+    // uint64_t. Saturates to max representable value on overflow.
+    using max_obj_t = typename statistics_type::max_objects_type;
     constexpr auto total_bits = key_type::index_bits + key_type::version_bits;
-    if constexpr (total_bits < 64) {
-        // Safe: result fits in 64 bits
-        constexpr auto max_objects_value = (std::size_t{1} << total_bits) -
-            std::size_t{1};
+    constexpr auto type_bits = sizeof(max_obj_t) * 8;
+
+    if constexpr (total_bits < type_bits) {
+        // Safe: result fits in max_objects_type
+        constexpr max_obj_t one = 1;
+        constexpr auto max_objects_value = (one << total_bits) - one;
         stats.max_objects = max_objects_value;
-    }
-#ifdef __SIZEOF_INT128__
-    else if constexpr (total_bits < 128)
-    {
-        // Use 128-bit arithmetic, then check if result fits in size_t
-        constexpr __uint128_t one = 1;
-        constexpr __uint128_t max_objects_128 = (one << total_bits) - one;
-        constexpr auto size_max = std::numeric_limits<std::size_t>::max();
-        if constexpr (max_objects_128 <= size_max) {
-            stats.max_objects = static_cast<std::size_t>(max_objects_128);
-        } else {
-            // Saturate: value too large for size_t
-            stats.max_objects = size_max;
-        }
-    }
-#endif
-    else
-    {
-        // total_bits >= 64 (or >= 128 without __uint128_t): saturate
-        stats.max_objects = std::numeric_limits<std::size_t>::max();
+    } else {
+        // Saturate: total_bits >= type_bits
+        stats.max_objects = std::numeric_limits<max_obj_t>::max();
     }
 
     // Slot accounting

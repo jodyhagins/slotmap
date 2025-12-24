@@ -15,6 +15,12 @@ This is the complete API reference for the `wjh::slotmap` library. For a concept
   - [std::hash Specialization](#stdhash-specialization)
   - [TrivialKey Alias](#trivialkey-alias)
   - [is_key Trait](#is_key-trait)
+- [Traits](#traits)
+  - [Traits Template](#traits-template)
+  - [SlotsPerSlab](#slotsperslab)
+  - [UseAliveBitForLookup](#usealivebitforlookup)
+  - [DefaultUserBits](#defaultuserbits)
+  - [Using Traits with SlotMap](#using-traits-with-slotmap)
 - [SlotMap Class](#slotmap-class)
   - [Template Declaration](#template-declaration)
   - [Member Types](#member-types)
@@ -45,10 +51,10 @@ namespace wjh::slotmap { /* ... */ }
 
 // Convenience aliases in wjh namespace
 namespace wjh {
-    template<typename T, unsigned I, unsigned V, unsigned U = 0>
+    template<typename T, IndexBits I, VersionBits V, UserBits U = UserBits{0}>
     using SlotMapKey = slotmap::Key<T, I, V, U>;
 
-    template<typename T, unsigned I, unsigned V, unsigned U = 0>
+    template<typename T, IndexBits I, VersionBits V, UserBits U = UserBits{0}>
     using TrivialSlotMapKey = slotmap::TrivialKey<T, I, V, U>;
 
     template<typename KeyT>
@@ -67,9 +73,9 @@ All public API types are in `wjh::slotmap`. Convenience aliases are provided in 
 ```cpp
 template <
     typename T,
-    unsigned IndexBits,
-    unsigned VersionBits,
-    unsigned UserBits = 0>
+    IndexBits I,
+    VersionBits V,
+    UserBits U = UserBits{0}>
 class Key;
 ```
 
@@ -78,9 +84,11 @@ A type-safe, bit-packed key with compile-time validation. Keys are lightweight h
 **Template Parameters:**
 
 - `T` - The value type that will be stored in a `SlotMap`. For purposes of the `Key`, this is a phantom type since it is not actually used by the `Key`. Keys with different `T` are incompatible types, preventing accidental mixing.
-- `IndexBits` - Number of bits for the slot index. Determines maximum simultaneous elements (2^IndexBits). Must be > 0.
-- `VersionBits` - Number of bits for the version/generation counter. Determines how many times a slot can be reused before exhaustion (2^VersionBits). Must be > 0.
-- `UserBits` - Number of bits for user-defined data stored in the key. Can be 0 if no user data is needed.
+- `I` (IndexBits) - Number of bits for the slot index. Determines maximum simultaneous elements (2^IndexBits). Must be > 0.
+- `V` (VersionBits) - Number of bits for the version/generation counter. Determines how many times a slot can be reused before exhaustion (2^VersionBits). Must be > 0.
+- `U` (UserBits) - Number of bits for user-defined data stored in the key. Defaults to 0 if no user data is needed.
+
+The template parameters `IndexBits`, `VersionBits`, and `UserBits` are strong enum types (not raw `unsigned`). Use them like: `IndexBits(16)`, `VersionBits(16)`, `UserBits(8)`. There are also user-defined literals available in `wjh::slotmap::literals`: `16_ib`, `16_vb`, `8_ub`.
 
 **Constraints:**
 
@@ -96,13 +104,13 @@ Bits are packed as `[user][version][index]` from MSB to LSB. This layout ensures
 
 ```cpp
 // 32-bit key: 16 index bits (65536 slots), 16 version bits, no user data
-using PlayerKey = wjh::SlotMapKey<Player, 16, 16>;
+using PlayerKey = wjh::SlotMapKey<Player, IndexBits(16), VersionBits(16)>;
 
 // 64-bit key with user data: 20 index, 20 version, 24 user bits
-using EntityKey = wjh::SlotMapKey<Entity, 20, 20, 24>;
+using EntityKey = wjh::SlotMapKey<Entity, IndexBits(20), VersionBits(20), UserBits(24)>;
 
 // Different types prevent mixing even with identical bit layout
-using EnemyKey = wjh::SlotMapKey<Enemy, 16, 16>;
+using EnemyKey = wjh::SlotMapKey<Enemy, IndexBits(16), VersionBits(16)>;
 // PlayerKey and EnemyKey are incompatible types - compile error if mixed
 ```
 
@@ -141,7 +149,7 @@ using size_type = /* Strong type with IndexBits+1 bits */;
 **Example:**
 
 ```cpp
-using MyKey = wjh::SlotMapKey<int, 16, 16>;
+using MyKey = wjh::SlotMapKey<int, IndexBits(16), VersionBits(16)>;
 static_assert(std::is_same_v<MyKey::value_type, uint32_t>);
 static_assert(std::is_same_v<MyKey::tag_type, int>);
 
@@ -178,7 +186,7 @@ Construct a key from its component parts. The `explicit` qualifier prevents acci
 **Examples:**
 
 ```cpp
-using MyKey = wjh::SlotMapKey<int, 16, 16>;
+using MyKey = wjh::SlotMapKey<int, IndexBits(16), VersionBits(16)>;
 
 // Default construction yields null key
 constexpr MyKey null_key;
@@ -192,7 +200,7 @@ auto key = MyKey(
 // This key has index=42, version=1, user=0
 
 // With user data
-using TaggedKey = wjh::SlotMapKey<int, 16, 8, 8>;
+using TaggedKey = wjh::SlotMapKey<int, IndexBits(16), VersionBits(8), UserBits(8)>;
 auto tagged = TaggedKey(
     TaggedKey::index_type{10},
     TaggedKey::version_type{5},
@@ -217,7 +225,7 @@ static constexpr unsigned user_bits = UserBits;
 **Example:**
 
 ```cpp
-using MyKey = wjh::SlotMapKey<int, 16, 16>;
+using MyKey = wjh::SlotMapKey<int, IndexBits(16), VersionBits(16)>;
 
 static_assert(MyKey::index_bits == 16);
 static_assert(MyKey::version_bits == 16);
@@ -245,7 +253,7 @@ Returns the null key (all bits zero). The null key is used to indicate "no eleme
 **Example:**
 
 ```cpp
-using MyKey = wjh::SlotMapKey<int, 16, 16>;
+using MyKey = wjh::SlotMapKey<int, IndexBits(16), VersionBits(16)>;
 wjh::SlotMap<MyKey> map;
 
 // try_emplace returns null key on capacity exhaustion
@@ -336,7 +344,7 @@ constexpr user_type user() const noexcept;
 **Example:**
 
 ```cpp
-using TaggedKey = wjh::SlotMapKey<Entity, 16, 8, 8>;
+using TaggedKey = wjh::SlotMapKey<Entity, IndexBits(16), VersionBits(8), UserBits(8)>;
 auto key = map.emplace(entity);
 auto tagged = key.with_user(TaggedKey::user_type{42});
 
@@ -390,7 +398,7 @@ constexpr Key with_user(user_type new_user) const noexcept;
 **Example:**
 
 ```cpp
-using TaggedKey = wjh::SlotMapKey<Entity, 16, 8, 8>;
+using TaggedKey = wjh::SlotMapKey<Entity, IndexBits(16), VersionBits(8), UserBits(8)>;
 wjh::SlotMap<TaggedKey> map;
 
 auto key = map.emplace(Entity{});
@@ -469,7 +477,7 @@ constexpr std::size_t hash() const noexcept;
 
 ```cpp
 // Hash can be computed at compile time
-using MyKey = wjh::SlotMapKey<int, 16, 16>;
+using MyKey = wjh::SlotMapKey<int, IndexBits(16), VersionBits(16)>;
 constexpr auto key = MyKey(MyKey::index_type{42}, MyKey::version_type{1});
 constexpr auto h = key.hash();  // Computed at compile time
 
@@ -477,6 +485,49 @@ constexpr auto h = key.hash();  // Computed at compile time
 std::unordered_set<MyKey> key_set;
 key_set.insert(map.emplace(1));
 key_set.insert(map.emplace(2));
+```
+
+---
+
+#### `identifies_same_object()`
+
+```cpp
+[[nodiscard]]
+constexpr bool identifies_same_object(Key const & other) const noexcept;
+```
+
+**Description:** Compares two keys ignoring user bits. Returns `true` if both keys refer to the same slot and version, regardless of their user bits values.
+
+**Parameters:**
+- `other` - The key to compare with.
+
+**Returns:** `true` if the keys have the same index and version (ignoring user bits), `false` otherwise.
+
+**Use Case:** When you have keys with different user bits (e.g., different priorities or flags) but need to check if they refer to the same element.
+
+**Example:**
+
+```cpp
+using TaggedKey = wjh::SlotMapKey<Entity, IndexBits(16), VersionBits(8), UserBits(8)>;
+wjh::SlotMap<TaggedKey> map;
+
+auto key = map.emplace(Entity{});
+auto high_priority = key.with_user(TaggedKey::user_type{255});
+auto low_priority = key.with_user(TaggedKey::user_type{1});
+
+// These are different keys (different user bits)
+assert(key != high_priority);
+assert(key != low_priority);
+assert(high_priority != low_priority);
+
+// But they all identify the same object
+assert(key.identifies_same_object(high_priority));
+assert(key.identifies_same_object(low_priority));
+assert(high_priority.identifies_same_object(low_priority));
+
+// A key with different index/version does NOT identify the same object
+auto other_key = map.emplace(Entity{});
+assert(not key.identifies_same_object(other_key));
 ```
 
 ---
@@ -562,7 +613,7 @@ auto bits = to_underlying(key);  // Found via ADL
 ### std::hash Specialization
 
 ```cpp
-template<typename T, unsigned I, unsigned V, unsigned U>
+template<typename T, IndexBits I, VersionBits V, UserBits U>
 struct std::hash<wjh::slotmap::Key<T, I, V, U>> {
     std::size_t operator()(wjh::slotmap::Key<T, I, V, U> const & key) const noexcept;
 };
@@ -575,7 +626,7 @@ struct std::hash<wjh::slotmap::Key<T, I, V, U>> {
 **Example:**
 
 ```cpp
-using MyKey = wjh::SlotMapKey<int, 16, 16>;
+using MyKey = wjh::SlotMapKey<int, IndexBits(16), VersionBits(16)>;
 wjh::SlotMap<MyKey> map;
 
 // Use keys in unordered containers
@@ -601,32 +652,15 @@ if (auto it = key_names.find(k1); it != key_names.end()) {
 ### TrivialKey Alias
 
 ```cpp
-template<typename T, unsigned IndexBits, unsigned VersionBits, unsigned UserBits = 0>
-using TrivialKey = Key<detail::Trivial<T>, IndexBits, VersionBits, UserBits>;
+template<typename T, IndexBits I, VersionBits V, UserBits U = UserBits{0}>
+using TrivialKey = Key<detail::Trivial<T>, I, V, U>;
 ```
 
 **Description:** Alias template for a `Key` that is trivially default constructible. When default-constructed, a `TrivialKey`'s bits are **uninitialized** (unlike regular `Key`, which zeroes its bits).
 
-**When to use:** Use `TrivialKey` when you'll immediately assign a valid value and want to avoid the cost of zero-initialization. This is a micro-optimization and rarely necessary, though important for cases where you want the key to be an implicit lifetime type.
+**When to use:** Use `TrivialKey` when you want the key to behave as the ints. This is mainly to allow a key to be treated as an implicit lifetime type so it can be used in shared memory (like passing in a message queue).
 
-**Example:**
-
-```cpp
-using MyKey = wjh::SlotMapKey<int, 16, 16>;
-using MyTrivialKey = wjh::TrivialSlotMapKey<int, 16, 16>;
-
-static_assert(not std::is_trivially_default_constructible_v<MyKey>);
-static_assert(std::is_trivially_default_constructible_v<MyTrivialKey>);
-
-MyKey k1;  // Bits are zeroed
-MyTrivialKey k2;  // Bits are uninitialized - DANGEROUS if used before assignment
-
-// Safe usage: immediate assignment
-MyTrivialKey k3;
-k3 = map.emplace(42);  // Now initialized
-```
-
-**Warning:** Never use a default-constructed `TrivialKey` before assigning it a valid value. The behavior is undefined.
+**Note** The default constructor for a `TrivialKey` is private, so it can't be called directly. This still preserves its status as an implicit lifetime type because it has a trivial constructor. However, since it can't be accessed without some real effort, it is unlikely to obtain one that is uninitialized.
 
 ---
 
@@ -642,7 +676,7 @@ inline constexpr bool is_key_v = /* true if T is a Key instantiation */;
 **Example:**
 
 ```cpp
-using MyKey = wjh::SlotMapKey<int, 16, 16>;
+using MyKey = wjh::SlotMapKey<int, IndexBits(16), VersionBits(16)>;
 
 static_assert(wjh::slotmap::is_key_v<MyKey>);
 static_assert(not wjh::slotmap::is_key_v<int>);
@@ -659,12 +693,126 @@ requires wjh::slotmap::is_key_v<KeyT>
 
 ---
 
+## Traits
+
+The `Traits` template allows advanced configuration of `SlotMap` behavior beyond what the `Key` type specifies.
+
+### Traits Template
+
+```cpp
+template <
+    KeyC KeyT,
+    SlotsPerSlab slots = SlotsPerSlab::Dynamic,
+    UseAliveBitForLookup alive_bit = UseAliveBitForLookup::Yes,
+    DefaultUserBits default_user = DefaultUserBits{0}>
+struct Traits;
+```
+
+**Template Parameters:**
+
+- `KeyT` - The key type (must satisfy the `KeyC` concept).
+- `slots` (SlotsPerSlab) - Controls slab allocation strategy. See [SlotsPerSlab](#slotsperslab).
+- `alive_bit` (UseAliveBitForLookup) - Controls lookup optimization. See [UseAliveBitForLookup](#usealivebitforlookup).
+- `default_user` (DefaultUserBits) - Default value for user bits in keys returned by `emplace()`/`try_emplace()`. See [DefaultUserBits](#defaultuserbits).
+
+### SlotsPerSlab
+
+```cpp
+enum class SlotsPerSlab : std::size_t {
+    Dynamic = 0,     // Determined at runtime via constructor
+    Default = 4096,  // Default value when Dynamic is used
+    All = size_t(-1) // Single slab containing all slots
+};
+```
+
+**Values:**
+
+- `Dynamic` - Slab size is passed to the SlotMap constructor (defaults to `Default` if not specified).
+- `Default` - 4096 slots per slab (good general-purpose default).
+- `All` - All slots in a single slab, allocated on first insertion. Enables single-slab optimizations.
+
+**Custom Values:** You can use any power-of-2 value: `SlotsPerSlab(1024)`, `SlotsPerSlab(16384)`.
+
+### UseAliveBitForLookup
+
+```cpp
+enum class UseAliveBitForLookup : bool {
+    No = false,
+    Yes = true   // Default
+};
+```
+
+**Description:** Controls whether `use()` reads the alive-bit from the slot's version field or from the separate bitmap.
+
+- `Yes` (default): Faster lookups (single memory access for version + alive check), slightly slower insert/erase.
+- `No`: Slower lookups (requires bitmap access), slightly faster insert/erase.
+
+**Note:** If `Key::version_bits` is not a power of two, there are no spare bits for the alive flag, so this setting is ignored.
+
+### DefaultUserBits
+
+```cpp
+enum class DefaultUserBits : std::size_t {};
+```
+
+**Description:** Sets the default value for user bits in keys returned by `emplace()` and `try_emplace()`. This value is encoded into all newly created keys.
+
+**Example:**
+
+```cpp
+using MyKey = wjh::slotmap::Key<int, IndexBits(16), VersionBits(8), UserBits(8)>;
+
+// Without Traits: user bits default to 0
+wjh::SlotMap<MyKey> map1;
+auto k1 = map1.emplace(42);
+assert(k1.user().value == 0);
+
+// With Traits: user bits default to 0xFF
+using MyTraits = wjh::slotmap::Traits<MyKey, SlotsPerSlab::Default,
+                                       UseAliveBitForLookup::Yes,
+                                       DefaultUserBits{0xFF}>;
+wjh::SlotMap<MyTraits> map2;
+auto k2 = map2.emplace(42);
+assert(k2.user().value == 0xFF);
+
+// User can still override with with_user()
+auto k3 = k2.with_user(MyKey::user_type{0x42});
+assert(k3.user().value == 0x42);
+```
+
+**Use Case:** When all or most keys need the same initial user bits value. Avoids having to call `with_user()` on every returned key.
+
+### Using Traits with SlotMap
+
+`SlotMap` can accept either a `Key` type or a `Traits` type as its template parameter:
+
+```cpp
+using MyKey = wjh::slotmap::Key<int, IndexBits(16), VersionBits(16)>;
+
+// Using Key directly (uses default Traits)
+wjh::SlotMap<MyKey> map1;
+
+// Using Traits for custom configuration
+using MyTraits = wjh::slotmap::Traits<MyKey, SlotsPerSlab::All>;
+wjh::SlotMap<MyTraits> map2;  // Single-slab optimized
+
+// With all options
+using FullTraits = wjh::slotmap::Traits<
+    MyKey,
+    SlotsPerSlab(8192),
+    UseAliveBitForLookup::No,
+    DefaultUserBits{42}>;
+wjh::SlotMap<FullTraits> map3;
+```
+
+---
+
 ## SlotMap Class
 
 ### Template Declaration
 
 ```cpp
-template <typename KeyT>
+template <typename KeyOrTraitsT>
 class SlotMap;
 ```
 
@@ -672,19 +820,19 @@ A high-performance slot map container providing O(1) insertion, deletion, and lo
 
 **Template Parameters:**
 
-- `KeyT` - Must be a `Key` instantiation (satisfies `is_key_v<KeyT>`).
+- `KeyOrTraitsT` - Either a `Key` instantiation (satisfies `is_key_v<KeyOrTraitsT>`) or a `Traits` instantiation.
 
 The stored element type is `KeyT::tag_type`.
 
 **Example:**
 
 ```cpp
-using PlayerKey = wjh::SlotMapKey<struct Player, 16, 16>;
+using PlayerKey = wjh::SlotMapKey<struct Player, IndexBits(16), VersionBits(16)>;
 wjh::SlotMap<PlayerKey> players;
 // Stores Player instances, accessed via PlayerKey handles
 
 struct Enemy { int health; std::string name; };
-using EnemyKey = wjh::SlotMapKey<Enemy, 16, 16>;
+using EnemyKey = wjh::SlotMapKey<Enemy, IndexBits(16), VersionBits(16)>;
 wjh::SlotMap<EnemyKey> enemies;
 // Stores Enemy instances, accessed via EnemyKey handles
 ```
@@ -718,23 +866,34 @@ using statistics_type = Statistics;
 ### Constants
 
 ```cpp
-static constexpr size_type end_of_free_list = /* 2^IndexBits */;
+static constexpr size_type max_slots = /* 2^IndexBits */;
+static constexpr size_type max_simultaneous_objects = /* 2^IndexBits */;
 ```
 
-**Description:** Sentinel value marking the end of the internal free list. This value is one past the maximum valid index (2^IndexBits), which fits in `size_type` but cannot be a valid `index_type`.
+**Description:** The maximum number of slots in the map, which is also the maximum number of simultaneous objects that can exist at any given time.
+This value is one past the maximum valid index (2^IndexBits), which fits in `size_type` but cannot be a valid `index_type`.
 
-**Use Case:** Internal bookkeeping. Users don't typically need this constant, but it's useful for understanding capacity limits.
+**Use Case:** Internal bookkeeping. Users don't typically need this constant, but it's useful for understanding capacity limits. It is also used as the sentinel of linked free nodes.
+
+```cpp
+static constexpr TotalSize max_total_objects = /* 2^IndexBits * 2^VersionBits - 1 */
+```
+
+**Description:** The total number of objects that can ever be inserted into the slotmap instance. Once this limit has been reached all further attempts will throw a std::length_error exception.
+
+**Use Case:** Internal bookkeeping. Users don't typically need this constant, but it's useful for understanding capacity limits an usage statistics.
 
 **Example:**
 
 ```cpp
-using MyKey = wjh::SlotMapKey<int, 8, 8>;  // 8 index bits
+using MyKey = wjh::SlotMapKey<int, IndexBits(8), VersionBits(8)>;  // 8 index bits
 wjh::SlotMap<MyKey> map;
 
 // Maximum valid index: 255 (2^8 - 1)
 // end_of_free_list: 256 (2^8)
 static_assert(MyKey::index_type::mask == 255);
-static_assert(map.end_of_free_list.value == 256);
+static_assert(map.max_slots.value == 256);
+static_assert(map.max_total_objects.value == 0xffff);
 ```
 
 ---
@@ -757,7 +916,7 @@ SlotMap();
 **Example:**
 
 ```cpp
-using MyKey = wjh::SlotMapKey<int, 16, 16>;
+using MyKey = wjh::SlotMapKey<int, IndexBits(16), VersionBits(16)>;
 wjh::SlotMap<MyKey> map;  // Default slab size chosen automatically
 
 auto key = map.emplace(42);
@@ -790,7 +949,7 @@ explicit SlotMap(size_type slots_per_slab);
 **Example:**
 
 ```cpp
-using MyKey = wjh::SlotMapKey<int, 16, 16>;
+using MyKey = wjh::SlotMapKey<int, IndexBits(16), VersionBits(16)>;
 
 // Small slabs for testing
 wjh::SlotMap<MyKey> test_map(MyKey::size_type{8});
@@ -1014,7 +1173,7 @@ struct Player {
     Player(std::string n, int h) : name(std::move(n)), health(h) {}
 };
 
-using PlayerKey = wjh::SlotMapKey<Player, 16, 16>;
+using PlayerKey = wjh::SlotMapKey<Player, IndexBits(16), VersionBits(16)>;
 wjh::SlotMap<PlayerKey> players;
 
 // Construct in-place (throws on capacity exhaustion)
@@ -1067,7 +1226,7 @@ template <typename... Args>
 **Example:**
 
 ```cpp
-using PlayerKey = wjh::SlotMapKey<Player, 16, 16>;
+using PlayerKey = wjh::SlotMapKey<Player, IndexBits(16), VersionBits(16)>;
 wjh::SlotMap<PlayerKey> players;
 
 // Construct in-place (returns null key on capacity exhaustion)
@@ -1422,23 +1581,6 @@ auto result2 = map.use(key, [](int const & v) { return v; }); // std::optional<i
 
 ---
 
-### Backward Compatibility
-
-All existing code using void callbacks continues to work unchanged:
-
-```cpp
-// All of these still return bool and work as before
-map.use(key, [](int & v) { v *= 2; });
-map.use(key, [](int & v, wjh::slotmap::Options & opts) {
-    opts.erase = true;
-});
-map.use(key, [](MyKey k, int & v) {
-    std::cout << k.index().value << '\n';
-});
-```
-
----
-
 ### Performance Notes
 
 - **Zero overhead for void callbacks**: When the callback returns void, the implementation is identical to the previous version - just returns bool.
@@ -1694,7 +1836,7 @@ struct Player {
     int score;
 };
 
-using PlayerKey = wjh::SlotMapKey<Player, 16, 16>;
+using PlayerKey = wjh::SlotMapKey<Player, IndexBits(16), VersionBits(16)>;
 wjh::SlotMap<PlayerKey> players;
 
 auto key = players.emplace(Player{"Alice", 100});
@@ -1992,7 +2134,7 @@ void reserve(size_type n);
 **Example:**
 
 ```cpp
-using MyKey = wjh::SlotMapKey<int, 16, 16>;
+using MyKey = wjh::SlotMapKey<int, IndexBits(16), VersionBits(16)>;
 wjh::SlotMap<MyKey> map;
 
 // Pre-allocate space for 10000 elements
@@ -2017,10 +2159,17 @@ for (int i = 0; i < 10000; ++i) {
 
 ```cpp
 struct Statistics {
+    // Type alias for max_objects fields (128-bit when available)
+#ifdef __SIZEOF_INT128__
+    using max_objects_type = __uint128_t;
+#else
+    using max_objects_type = std::uint64_t;
+#endif
+
     // Configuration (immutable after SlotMap construction)
     std::size_t slots_per_slab;      // Configured slots per slab (power of 2)
     std::size_t max_slots;           // Max simultaneous slots (2^IndexBits)
-    std::size_t max_objects;         // Max objects ever creatable
+    max_objects_type max_objects;    // Max objects ever creatable
 
     // Slot accounting
     std::size_t active_slots;        // Slots holding alive objects
@@ -2035,7 +2184,7 @@ struct Statistics {
 
     // Object lifetime metrics
     std::size_t objects_created;     // Total objects created over lifetime
-    std::size_t objects_remaining;   // Objects still creatable (max - created)
+    max_objects_type objects_remaining; // Objects still creatable (max - created)
 
     // Slab metrics
     std::size_t slab_count;          // Active (non-null) slabs
@@ -2054,9 +2203,11 @@ struct Statistics {
 };
 ```
 
-**Description:** A non-templated struct containing comprehensive statistics about the SlotMap's current state. All size fields use `std::size_t` for simplicity and compatibility.
+**Description:** A non-templated struct containing comprehensive statistics about the SlotMap's current state.
 
-**Note:** The `IndexBits` template parameter of `Key` is limited to 63 bits, ensuring all size values fit in a 64-bit `std::size_t`.
+**`max_objects_type`:** The type used for `max_objects` and `objects_remaining` fields. On platforms with `__int128` support (GCC/Clang on 64-bit), this is `__uint128_t` which can represent values up to 2^128-1. On other platforms, this is `std::uint64_t`. When the computed value would overflow, it saturates to the maximum representable value.
+
+**Note:** All other size fields use `std::size_t` for simplicity and compatibility. The `IndexBits` template parameter of `Key` is limited to 63 bits, ensuring these values fit in a 64-bit `std::size_t`.
 
 ---
 
@@ -2076,7 +2227,7 @@ Statistics statistics() const noexcept;
 **Example:**
 
 ```cpp
-using MyKey = wjh::SlotMapKey<int, 16, 16>;
+using MyKey = wjh::SlotMapKey<int, IndexBits(16), VersionBits(16)>;
 wjh::SlotMap<MyKey> map;
 
 // Populate the map
@@ -2229,7 +2380,7 @@ The library uses strong types (via `detail::TypeBase`) for `index_type`, `versio
 **Example:**
 
 ```cpp
-using MyKey = wjh::SlotMapKey<int, 16, 16>;
+using MyKey = wjh::SlotMapKey<int, IndexBits(16), VersionBits(16)>;
 MyKey::index_type idx;
 MyKey::version_type ver;
 
@@ -2449,7 +2600,7 @@ struct ThrowingType {
     }
 };
 
-using ThrowKey = wjh::SlotMapKey<ThrowingType, 16, 16>;
+using ThrowKey = wjh::SlotMapKey<ThrowingType, IndexBits(16), VersionBits(16)>;
 wjh::SlotMap<ThrowKey> map;
 
 try {
@@ -2474,7 +2625,7 @@ assert(map.size().value == 1);
 Keys are regular types with comparison and hashing support, so they work with standard containers.
 
 ```cpp
-using PlayerKey = wjh::SlotMapKey<Player, 16, 16>;
+using PlayerKey = wjh::SlotMapKey<Player, IndexBits(16), VersionBits(16)>;
 wjh::SlotMap<PlayerKey> players;
 
 // Store keys in a vector
@@ -2508,7 +2659,7 @@ for (auto key : active_players) {
 User bits allow storing small amounts of metadata directly in keys without modifying the stored element or allocating additional memory.
 
 ```cpp
-using TaggedKey = wjh::SlotMapKey<Entity, 16, 8, 8>;
+using TaggedKey = wjh::SlotMapKey<Entity, IndexBits(16), VersionBits(8), UserBits(8)>;
 wjh::SlotMap<TaggedKey> entities;
 
 // Emplace an entity
@@ -2672,7 +2823,7 @@ struct Player {
     int health;
 };
 
-using PlayerKey = wjh::SlotMapKey<Player, 16, 16>;
+using PlayerKey = wjh::SlotMapKey<Player, IndexBits(16), VersionBits(16)>;
 wjh::SlotMap<PlayerKey> players;
 
 // Index: team_id -> vector of keys

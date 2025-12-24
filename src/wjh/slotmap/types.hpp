@@ -76,6 +76,15 @@ struct Statistics
 {
     static_assert(sizeof(std::size_t) >= sizeof(std::uint64_t));
 
+    /// Type used for max_objects and objects_remaining fields.
+    /// Uses __uint128_t when available (GCC/Clang on 64-bit), otherwise
+    /// std::uint64_t. Saturates to max value on overflow.
+#ifdef __SIZEOF_INT128__
+    using max_objects_type = __uint128_t;
+#else
+    using max_objects_type = std::uint64_t;
+#endif
+
     // ========================================================================
     // Configuration (immutable after construction of the SlotMap)
     // ========================================================================
@@ -89,11 +98,9 @@ struct Statistics
     /// Max objects ever creatable (2^IndexBits * 2^VersionBits - 1)
     /// The -1 is because slot 0 starts at version 1 to avoid the null key.
     ///
-    /// @note When index_bits + version_bits >= 64, this value may be
-    ///       saturated to SIZE_MAX if the true value cannot be represented.
-    ///       Use __uint128_t support (available on GCC/Clang) for accurate
-    ///       values with larger bit counts.
-    std::size_t max_objects;
+    /// @note Uses 128-bit type when available (GCC/Clang), otherwise 64-bit.
+    ///       Saturates to max representable value on overflow.
+    max_objects_type max_objects;
 
     // ========================================================================
     // Slot accounting
@@ -132,7 +139,7 @@ struct Statistics
     std::size_t objects_created;
 
     /// Objects still creatable (max - created)
-    std::size_t objects_remaining;
+    max_objects_type objects_remaining;
 
     // ========================================================================
     // Slab metrics
@@ -244,6 +251,25 @@ enum class UseAliveBitForLookup : bool
 {
     No = false,
     Yes = true,
+};
+
+/**
+ * Default value for the user bits field in keys returned by
+ * emplace/try_emplace.
+ *
+ * When a SlotMap creates a new key, the user bits field will be set to this
+ * value. Users can change individual keys after creation with key.with_user().
+ *
+ * Example usage:
+ * @code
+ * using MySlotMap = SlotMap<int, IndexBits(16), VersionBits(8), UserBits(8),
+ *                           DefaultUserBits(0xFF)>;
+ * MySlotMap map;
+ * auto key = map.emplace(42);  // key.user().value == 0xFF
+ * @endcode
+ */
+enum class DefaultUserBits : std::size_t
+{
 };
 
 namespace literals {

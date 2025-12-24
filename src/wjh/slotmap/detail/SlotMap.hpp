@@ -16,7 +16,7 @@
 
 namespace wjh::slotmap {
 
-template <KeyC, SlotsPerSlab, UseAliveBitForLookup>
+template <KeyC, SlotsPerSlab, UseAliveBitForLookup, DefaultUserBits>
 struct Traits;
 
 namespace detail {
@@ -534,7 +534,8 @@ struct helper<KeyT, vs...>
     using type = Traits<
         KeyT,
         locate(SlotsPerSlab::Dynamic, vs...),
-        locate(UseAliveBitForLookup::Yes, vs...)>;
+        locate(UseAliveBitForLookup::Yes, vs...),
+        locate(DefaultUserBits{0}, vs...)>;
 };
 
 template <typename T, auto... vs>

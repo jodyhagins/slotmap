@@ -124,6 +124,11 @@ struct KeyBase<ValueTypeT, Trivial<TagTypeT>>
 
     value_type bits_;
 
+private:
+    // Trivial default constructor makes this an implicit lifetime type per the
+    // C++ standard (visibility doesn't affect implicit lifetime status).
+    // Private access prevents users from accidentally creating uninitialized
+    // keys.
     constexpr KeyBase() = default;
 
 protected:

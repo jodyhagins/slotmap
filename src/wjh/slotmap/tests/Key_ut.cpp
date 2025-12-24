@@ -55,6 +55,25 @@ make_key(auto index, auto version) noexcept
     return make_key<T, I, V, U>(index, version, std::uint8_t(0));
 }
 
+template <
+    typename T = void,
+    IndexBits I,
+    VersionBits V,
+    UserBits U = 0_ub,
+    typename KeyT = wjh::slotmap::TrivialKey<T, I, V, U>>
+constexpr auto
+make_trivial_key(auto index, auto version, auto user) noexcept
+{
+    return make_key<KeyT>(index, version, user);
+}
+
+template <typename T = void, IndexBits I, VersionBits V, UserBits U = 0_ub>
+constexpr auto
+make_trivial_key(auto index, auto version) noexcept
+{
+    return make_trivial_key<T, I, V, U>(index, version, std::uint8_t(0));
+}
+
 // ============================================================================
 // 16-bit Key Tests
 // ============================================================================
@@ -1398,6 +1417,307 @@ TEST_CASE("Key: identifies_same_object is symmetric")
 
         REQUIRE(k1.identifies_same_object(k2) == k2.identifies_same_object(k1));
         REQUIRE(k1.identifies_same_object(k3) == k3.identifies_same_object(k1));
+    }
+}
+
+// ============================================================================
+// TrivialKey Tests
+// ============================================================================
+
+TEST_CASE("TrivialKey: type traits")
+{
+    // TrivialKey has a trivial default constructor that is PRIVATE.
+    // This makes it an implicit lifetime type per the C++ standard (which does
+    // not consider visibility), while preventing users from accidentally
+    // constructing uninitialized keys. Once std::is_implicit_lifetime is
+    // available (requires compiler support), we can test that directly.
+
+    SUBCASE("TrivialKey is NOT publicly default constructible (private ctor)") {
+        using TK = TrivialKey<int, 16_ib, 16_vb>;
+        // The default constructor exists and is trivial, making TrivialKey
+        // suitable for implicit lifetime use. But it's private to prevent
+        // accidental uninitialized construction by users.
+        static_assert(not std::is_default_constructible_v<TK>);
+        REQUIRE(not std::is_default_constructible_v<TK>);
+    }
+
+    SUBCASE("regular Key IS default constructible (public ctor, zero-init)") {
+        using K = Key<int, 16_ib, 16_vb>;
+        static_assert(std::is_default_constructible_v<K>);
+        // But it's NOT trivially default constructible because it zero-inits
+        static_assert(not std::is_trivially_default_constructible_v<K>);
+        REQUIRE(std::is_default_constructible_v<K>);
+    }
+
+    SUBCASE("TrivialKey is trivially copyable") {
+        using TK = TrivialKey<int, 16_ib, 16_vb>;
+        static_assert(std::is_trivially_copyable_v<TK>);
+        REQUIRE(std::is_trivially_copyable_v<TK>);
+    }
+
+    SUBCASE("TrivialKey is trivially destructible") {
+        using TK = TrivialKey<int, 16_ib, 16_vb>;
+        static_assert(std::is_trivially_destructible_v<TK>);
+        REQUIRE(std::is_trivially_destructible_v<TK>);
+    }
+
+    SUBCASE("TrivialKey has standard layout") {
+        using TK = TrivialKey<int, 16_ib, 16_vb>;
+        static_assert(std::is_standard_layout_v<TK>);
+        REQUIRE(std::is_standard_layout_v<TK>);
+    }
+
+    SUBCASE("regular Key is also trivially copyable and destructible") {
+        using K = Key<int, 16_ib, 16_vb>;
+        static_assert(std::is_trivially_copyable_v<K>);
+        static_assert(std::is_trivially_destructible_v<K>);
+        REQUIRE(std::is_trivially_copyable_v<K>);
+        REQUIRE(std::is_trivially_destructible_v<K>);
+    }
+}
+
+TEST_CASE("TrivialKey: tag_type is unwrapped")
+{
+    SUBCASE("tag_type extracts the inner type from Trivial wrapper") {
+        using TK = TrivialKey<int, 16_ib, 16_vb>;
+        static_assert(std::is_same_v<TK::tag_type, int>);
+        REQUIRE(true);
+    }
+
+    SUBCASE("tag_type works with custom types") {
+        struct MyStruct
+        {
+            int x;
+        };
+
+        using TK = TrivialKey<MyStruct, 16_ib, 16_vb>;
+        static_assert(std::is_same_v<TK::tag_type, MyStruct>);
+        REQUIRE(true);
+    }
+}
+
+TEST_CASE("TrivialKey: same value_type as Key")
+{
+    SUBCASE("32-bit TrivialKey has uint32_t value_type") {
+        using TK = TrivialKey<int, 16_ib, 16_vb>;
+        using K = Key<int, 16_ib, 16_vb>;
+        static_assert(std::is_same_v<TK::value_type, std::uint32_t>);
+        static_assert(std::is_same_v<TK::value_type, K::value_type>);
+        REQUIRE(true);
+    }
+
+    SUBCASE("64-bit TrivialKey has uint64_t value_type") {
+        using TK = TrivialKey<int, 32_ib, 32_vb>;
+        static_assert(std::is_same_v<TK::value_type, std::uint64_t>);
+        REQUIRE(true);
+    }
+}
+
+TEST_CASE("TrivialKey: construction and accessors work correctly")
+{
+    SUBCASE("construct with components") {
+        auto k = make_trivial_key<int, 16_ib, 8_vb, 8_ub>(100, 5, 42);
+
+        REQUIRE(k.index() == 100);
+        REQUIRE(k.version() == 5);
+        REQUIRE(k.user() == 42);
+    }
+
+    SUBCASE("null() returns null key") {
+        using TK = TrivialKey<int, 16_ib, 16_vb>;
+        auto k = TK::null();
+
+        REQUIRE(k.is_null());
+        REQUIRE(k.index() == 0);
+        REQUIRE(k.version() == 0);
+    }
+
+    SUBCASE("with_user creates modified copy") {
+        using TK = TrivialKey<int, 16_ib, 8_vb, 8_ub>;
+        auto k1 = make_trivial_key<int, 16_ib, 8_vb, 8_ub>(100, 5, 1);
+        auto k2 = k1.with_user(TK::user_type{std::uint8_t{99}});
+
+        REQUIRE(k1.user() == 1);
+        REQUIRE(k2.user() == 99);
+        REQUIRE(k1.index() == k2.index());
+        REQUIRE(k1.version() == k2.version());
+    }
+}
+
+TEST_CASE("TrivialKey: comparison operators")
+{
+    SUBCASE("equality comparison") {
+        auto k1 = make_trivial_key<int, 16_ib, 16_vb>(100, 5);
+        auto k2 = make_trivial_key<int, 16_ib, 16_vb>(100, 5);
+        auto k3 = make_trivial_key<int, 16_ib, 16_vb>(200, 5);
+
+        REQUIRE(k1 == k2);
+        REQUIRE(k1 != k3);
+    }
+
+    SUBCASE("ordering comparison") {
+        auto k1 = make_trivial_key<int, 16_ib, 16_vb>(100, 5);
+        auto k2 = make_trivial_key<int, 16_ib, 16_vb>(200, 5);
+
+        REQUIRE(k1 < k2);
+        REQUIRE(k2 > k1);
+    }
+}
+
+TEST_CASE("TrivialKey: hashing")
+{
+    SUBCASE("hash() member function works") {
+        auto k = make_trivial_key<int, 16_ib, 16_vb>(100, 5);
+
+        auto h = k.hash();
+        REQUIRE(h != 0);
+    }
+
+    SUBCASE("std::hash specialization works") {
+        using TK = TrivialKey<int, 16_ib, 16_vb>;
+        auto k = make_trivial_key<int, 16_ib, 16_vb>(100, 5);
+
+        std::hash<TK> hasher;
+        REQUIRE(hasher(k) == k.hash());
+    }
+
+    SUBCASE("TrivialKey works in unordered_map") {
+        using TK = TrivialKey<int, 16_ib, 16_vb>;
+        std::unordered_map<TK, std::string> map;
+
+        auto k1 = make_trivial_key<int, 16_ib, 16_vb>(100, 1);
+        auto k2 = make_trivial_key<int, 16_ib, 16_vb>(200, 2);
+
+        map[k1] = "first";
+        map[k2] = "second";
+
+        REQUIRE(map[k1] == "first");
+        REQUIRE(map[k2] == "second");
+    }
+}
+
+TEST_CASE("TrivialKey: identifies_same_object")
+{
+    SUBCASE("keys with different user bits identify same object") {
+        auto k1 = make_trivial_key<int, 16_ib, 8_vb, 8_ub>(100, 5, 1);
+        auto k2 = make_trivial_key<int, 16_ib, 8_vb, 8_ub>(100, 5, 99);
+
+        REQUIRE(k1 != k2);
+        REQUIRE(k1.identifies_same_object(k2));
+    }
+
+    SUBCASE("keys with different index do not identify same object") {
+        auto k1 = make_trivial_key<int, 16_ib, 8_vb, 8_ub>(100, 5, 1);
+        auto k2 = make_trivial_key<int, 16_ib, 8_vb, 8_ub>(101, 5, 1);
+
+        REQUIRE(not k1.identifies_same_object(k2));
+    }
+}
+
+TEST_CASE("TrivialKey: implicit lifetime type suitability")
+{
+    // These tests verify properties needed for implicit lifetime types
+    // which can be safely used in shared memory or with memcpy
+
+    SUBCASE("TrivialKey has trivial copy constructor") {
+        using TK = TrivialKey<int, 16_ib, 16_vb>;
+        static_assert(std::is_trivially_copy_constructible_v<TK>);
+        REQUIRE(std::is_trivially_copy_constructible_v<TK>);
+    }
+
+    SUBCASE("TrivialKey has trivial copy assignment") {
+        using TK = TrivialKey<int, 16_ib, 16_vb>;
+        static_assert(std::is_trivially_copy_assignable_v<TK>);
+        REQUIRE(std::is_trivially_copy_assignable_v<TK>);
+    }
+
+    SUBCASE("TrivialKey has trivial move constructor") {
+        using TK = TrivialKey<int, 16_ib, 16_vb>;
+        static_assert(std::is_trivially_move_constructible_v<TK>);
+        REQUIRE(std::is_trivially_move_constructible_v<TK>);
+    }
+
+    SUBCASE("TrivialKey has trivial move assignment") {
+        using TK = TrivialKey<int, 16_ib, 16_vb>;
+        static_assert(std::is_trivially_move_assignable_v<TK>);
+        REQUIRE(std::is_trivially_move_assignable_v<TK>);
+    }
+
+    SUBCASE("memcpy round-trip preserves TrivialKey") {
+        using TK = TrivialKey<int, 16_ib, 16_vb>;
+        auto original = make_trivial_key<int, 16_ib, 16_vb>(12345, 678);
+
+        // Simulate shared memory / memcpy scenario using a union to provide
+        // storage. The union's implicit default constructor is trivial because
+        // TrivialKey's default constructor is trivial (even though private).
+        union Storage
+        {
+            TK key;
+            std::byte bytes[sizeof(TK)];
+
+            constexpr Storage()
+            : bytes{}
+            { }
+        };
+
+        Storage buffer;
+        std::memcpy(buffer.bytes, &original, sizeof(TK));
+
+        // For implicit lifetime types, accessing buffer.key after memcpy
+        // is well-defined because the object's lifetime begins implicitly.
+        REQUIRE(buffer.key == original);
+        REQUIRE(buffer.key.index() == 12345);
+        REQUIRE(buffer.key.version() == 678);
+    }
+}
+
+TEST_CASE("TrivialKey: different bit widths"){
+    SUBCASE("16-bit TrivialKey"){using TK = TrivialKey<int, 8_ib, 8_vb>;
+static_assert(std::is_same_v<TK::value_type, std::uint16_t>);
+static_assert(std::is_trivially_copyable_v<TK>);
+
+auto k = make_trivial_key<int, 8_ib, 8_vb>(255, 255);
+REQUIRE(k.index() == 255);
+REQUIRE(k.version() == 255);
+} // anonymous namespace
+
+SUBCASE("64-bit TrivialKey") {
+    using TK = TrivialKey<int, 32_ib, 32_vb>;
+    static_assert(std::is_same_v<TK::value_type, std::uint64_t>);
+    static_assert(std::is_trivially_copyable_v<TK>);
+
+    auto k = make_trivial_key<int, 32_ib, 32_vb>(4294967295U, 4294967295U);
+    REQUIRE(k.index() == 4294967295U);
+    REQUIRE(k.version() == 4294967295U);
+}
+
+#ifdef __UINT128_TYPE__
+SUBCASE("128-bit TrivialKey") {
+    using TK = TrivialKey<int, 64_ib, 64_vb>;
+    static_assert(std::is_same_v<TK::value_type, unsigned __int128>);
+    static_assert(std::is_trivially_copyable_v<TK>);
+
+    auto k = make_trivial_key<int, 64_ib, 64_vb>(1ULL << 40, 1ULL << 30);
+    REQUIRE(k.index() == (1ULL << 40));
+    REQUIRE(k.version() == (1ULL << 30));
+}
+#endif
+}
+
+TEST_CASE("TrivialKey: wjh namespace alias")
+{
+    SUBCASE("TrivialSlotMapKey alias works") {
+        using TK = wjh::TrivialSlotMapKey<int, 16_ib, 16_vb>;
+        static_assert(std::is_trivially_copyable_v<TK>);
+        static_assert(std::is_same_v<TK::tag_type, int>);
+        REQUIRE(true);
+    }
+
+    SUBCASE("TrivialSlotMapKey is same as TrivialKey") {
+        using TK1 = wjh::TrivialSlotMapKey<int, 16_ib, 16_vb>;
+        using TK2 = TrivialKey<int, 16_ib, 16_vb>;
+        static_assert(std::is_same_v<TK1, TK2>);
+        REQUIRE(true);
     }
 }
 

@@ -527,3 +527,274 @@ TEST_SUITE("alive_bit_trait - Integration with Other Operations")
         CHECK_FALSE(found);
     }
 }
+
+// ============================================================================
+// DefaultUserBits Tests
+// ============================================================================
+
+TEST_SUITE("default_user_bits - Configuration")
+{
+    TEST_CASE("default user bits is 0 by default")
+    {
+        // 16 + 8 + 8 = 32 bits (valid)
+        using DefaultMap = wjh::SlotMap<int, 16_ib, 8_vb, 8_ub>;
+        static_assert(
+            DefaultMap::traits_type::default_user_bits == 0,
+            "default user bits should be 0 when not specified");
+    }
+
+    TEST_CASE("default user bits can be configured via Traits")
+    {
+        // 16 + 8 + 8 = 32 bits (valid)
+        using CustomKey = wjh::slotmap::Key<int, 16_ib, 8_vb, 8_ub>;
+        using CustomTraits = wjh::slotmap::Traits<
+            CustomKey,
+            wjh::slotmap::SlotsPerSlab::Dynamic,
+            wjh::slotmap::UseAliveBitForLookup::Yes,
+            wjh::slotmap::DefaultUserBits{0x7F}>;
+        static_assert(
+            CustomTraits::default_user_bits == 0x7F,
+            "custom default user bits should be preserved");
+    }
+
+    TEST_CASE("default user bits can be configured via SlotMap template")
+    {
+        // 16 + 8 + 8 = 32 bits (valid)
+        using CustomMap = wjh::SlotMap<
+            int,
+            16_ib,
+            8_vb,
+            wjh::slotmap::UserBits{8},
+            wjh::slotmap::DefaultUserBits{0xAA}>;
+        static_assert(
+            CustomMap::traits_type::default_user_bits == 0xAA,
+            "custom default user bits should be accessible via SlotMap");
+    }
+
+    TEST_CASE("default user bits is masked to fit user bits")
+    {
+        // 10 + 4 + 2 = 16 bits (valid), only 2 user bits
+        using SmallUserKey = wjh::slotmap::Key<int, 10_ib, 4_vb, 2_ub>;
+        using SmallTraits = wjh::slotmap::Traits<
+            SmallUserKey,
+            wjh::slotmap::SlotsPerSlab::Dynamic,
+            wjh::slotmap::UseAliveBitForLookup::Yes,
+            wjh::slotmap::DefaultUserBits{0xFF}>; // Way larger than 2 bits
+        static_assert(
+            SmallTraits::default_user_bits == 0x3,
+            "default user bits should be masked to fit configured user bits");
+    }
+}
+
+TEST_SUITE("default_user_bits - emplace/try_emplace")
+{
+    TEST_CASE("emplace returns key with default user bits")
+    {
+        // 10 + 4 + 2 = 16 bits (valid)
+        using CustomKey = wjh::slotmap::Key<int, 10_ib, 4_vb, 2_ub>;
+        using CustomMap = wjh::SlotMap<
+            CustomKey,
+            wjh::slotmap::SlotsPerSlab::All,
+            wjh::slotmap::DefaultUserBits{0x2}>; // 2 bits max = 3
+
+        CustomMap map;
+        auto key = map.emplace(42);
+
+        CHECK(key.user().value == 0x2);
+    }
+
+    TEST_CASE("try_emplace returns key with default user bits")
+    {
+        // 10 + 4 + 2 = 16 bits (valid)
+        using CustomKey = wjh::slotmap::Key<int, 10_ib, 4_vb, 2_ub>;
+        using CustomMap = wjh::SlotMap<
+            CustomKey,
+            wjh::slotmap::SlotsPerSlab::All,
+            wjh::slotmap::DefaultUserBits{0x3}>; // 2 bits max = 3
+
+        CustomMap map;
+        auto key = map.try_emplace(42);
+
+        REQUIRE_FALSE(key.is_null());
+        CHECK(key.user().value == 0x3);
+    }
+
+    TEST_CASE("multiple emplaces return keys with same default user bits")
+    {
+        // 10 + 4 + 2 = 16 bits (valid)
+        using CustomKey = wjh::slotmap::Key<int, 10_ib, 4_vb, 2_ub>;
+        using CustomMap = wjh::SlotMap<
+            CustomKey,
+            wjh::slotmap::SlotsPerSlab::All,
+            wjh::slotmap::DefaultUserBits{0x1}>;
+
+        CustomMap map;
+        auto k1 = map.emplace(1);
+        auto k2 = map.emplace(2);
+        auto k3 = map.emplace(3);
+
+        CHECK(k1.user().value == 0x1);
+        CHECK(k2.user().value == 0x1);
+        CHECK(k3.user().value == 0x1);
+    }
+
+    TEST_CASE("with_user can override default user bits")
+    {
+        // 10 + 4 + 2 = 16 bits (valid)
+        using CustomKey = wjh::slotmap::Key<int, 10_ib, 4_vb, 2_ub>;
+        using CustomMap = wjh::SlotMap<
+            CustomKey,
+            wjh::slotmap::SlotsPerSlab::All,
+            wjh::slotmap::DefaultUserBits{0x1}>;
+
+        CustomMap map;
+        auto key = map.emplace(42);
+
+        CHECK(key.user().value == 0x1);
+
+        auto modified_key = key.with_user(CustomKey::user_type{0x3u});
+        CHECK(modified_key.user().value == 0x3u);
+
+        // Both keys should identify the same object
+        CHECK(key.identifies_same_object(modified_key));
+    }
+}
+
+TEST_SUITE("default_user_bits - for_each")
+{
+    TEST_CASE("for_each provides keys with default user bits")
+    {
+        // 10 + 4 + 2 = 16 bits (valid)
+        using CustomKey = wjh::slotmap::Key<int, 10_ib, 4_vb, 2_ub>;
+        using CustomMap = wjh::SlotMap<
+            CustomKey,
+            wjh::slotmap::SlotsPerSlab::All,
+            wjh::slotmap::DefaultUserBits{0x2}>;
+
+        CustomMap map;
+        (void)map.emplace(1);
+        (void)map.emplace(2);
+        (void)map.emplace(3);
+
+        map.for_each(
+            [](CustomKey key, int &) { CHECK(key.user().value == 0x2); });
+    }
+
+    TEST_CASE("const for_each provides keys with default user bits")
+    {
+        // 10 + 4 + 2 = 16 bits (valid)
+        using CustomKey = wjh::slotmap::Key<int, 10_ib, 4_vb, 2_ub>;
+        using CustomMap = wjh::SlotMap<
+            CustomKey,
+            wjh::slotmap::SlotsPerSlab::All,
+            wjh::slotmap::DefaultUserBits{0x3}>;
+
+        CustomMap map;
+        (void)map.emplace(1);
+        (void)map.emplace(2);
+
+        CustomMap const & const_map = map;
+        const_map.for_each(
+            [](CustomKey key, int const &) { CHECK(key.user().value == 0x3); });
+    }
+}
+
+TEST_SUITE("default_user_bits - Zero User Bits")
+{
+    TEST_CASE("default user bits with zero user bits configured")
+    {
+        // When there are no user bits, default_user_bits should be 0
+        using NoUserKey = wjh::slotmap::Key<int, 12_ib, 20_vb, 0_ub>;
+        using NoUserTraits = wjh::slotmap::Traits<
+            NoUserKey,
+            wjh::slotmap::SlotsPerSlab::Dynamic,
+            wjh::slotmap::UseAliveBitForLookup::Yes,
+            wjh::slotmap::DefaultUserBits{0xFF}>; // Should be masked to 0
+
+        static_assert(
+            NoUserTraits::default_user_bits == 0,
+            "default user bits should be 0 when no user bits are configured");
+    }
+
+    TEST_CASE("SlotMap works correctly with zero user bits")
+    {
+        using NoUserKey = wjh::slotmap::Key<int, 12_ib, 20_vb>;
+        using NoUserMap = wjh::SlotMap<NoUserKey>;
+
+        NoUserMap map;
+        auto key = map.emplace(42);
+
+        CHECK(key.user().value == 0);
+
+        bool found = false;
+        (void)map.use(key, [&](int val) {
+            found = true;
+            CHECK(val == 42);
+        });
+        CHECK(found);
+    }
+}
+
+TEST_SUITE("default_user_bits - Property-Based Tests")
+{
+    TEST_CASE("property: all keys from emplace have default user bits")
+    {
+        rc::check(
+            "emplace always returns key with configured default user bits",
+            []() {
+                // 10 + 4 + 2 = 16 bits (valid)
+                using CustomKey = wjh::slotmap::Key<int, 10_ib, 4_vb, 2_ub>;
+                using CustomMap = wjh::SlotMap<
+                    CustomKey,
+                    wjh::slotmap::SlotsPerSlab::All,
+                    wjh::slotmap::DefaultUserBits{0x3}>;
+
+                CustomMap map;
+                auto num_items = *rc::gen::inRange(1, 50);
+
+                for (int i = 0; i < num_items; ++i) {
+                    auto value = *rc::gen::inRange(0, 1000);
+                    auto key = map.emplace(value);
+                    RC_ASSERT(key.user().value == 0x3);
+                }
+            });
+    }
+
+    TEST_CASE(
+        "property: for_each keys match emplaced keys (with default user bits)")
+    {
+        rc::check("for_each keys have same user bits as emplaced keys", []() {
+            // 10 + 4 + 2 = 16 bits (valid)
+            using CustomKey = wjh::slotmap::Key<int, 10_ib, 4_vb, 2_ub>;
+            using CustomMap = wjh::SlotMap<
+                CustomKey,
+                wjh::slotmap::SlotsPerSlab::All,
+                wjh::slotmap::DefaultUserBits{0x2}>;
+
+            CustomMap map;
+            std::vector<CustomKey> emplace_keys;
+
+            auto num_items = *rc::gen::inRange(1, 30);
+            for (int i = 0; i < num_items; ++i) {
+                emplace_keys.push_back(map.emplace(i));
+            }
+
+            std::vector<CustomKey> for_each_keys;
+            map.for_each(
+                [&](CustomKey key, int &) { for_each_keys.push_back(key); });
+
+            RC_ASSERT(emplace_keys.size() == for_each_keys.size());
+
+            // Sort both by index for comparison
+            auto by_index = [](CustomKey a, CustomKey b) {
+                return a.index().value < b.index().value;
+            };
+            std::sort(emplace_keys.begin(), emplace_keys.end(), by_index);
+            std::sort(for_each_keys.begin(), for_each_keys.end(), by_index);
+
+            for (std::size_t i = 0; i < emplace_keys.size(); ++i) {
+                RC_ASSERT(emplace_keys[i] == for_each_keys[i]);
+            }
+        });
+    }
+}

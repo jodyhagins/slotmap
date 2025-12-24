@@ -36,7 +36,10 @@ constexpr Key<T, I, V, U>
 Key<T, I, V, U>::
 null() noexcept
 {
-    return Key{};
+    return Key(
+        index_type{naked_index_type(0)},
+        version_type{naked_version_type(0)},
+        user_type{naked_user_type(0)});
 }
 
 template <typename T, IndexBits I, VersionBits V, UserBits U>
@@ -78,14 +81,7 @@ constexpr Key<T, I, V, U>
 Key<T, I, V, U>::
 with_user(user_type new_user) const noexcept
 {
-    // Clear existing user bits and set new ones
-    auto const cleared = Base::bits_ & ~safe_shift_left(user_mask, user_shift);
-    auto const updated = value_type(
-        cleared | safe_shift_left(new_user.value & user_mask, user_shift));
-
-    Key result;
-    result.Base::bits_ = updated;
-    return result;
+    return Key(index(), version(), new_user);
 }
 
 template <typename T, IndexBits I, VersionBits V, UserBits U>

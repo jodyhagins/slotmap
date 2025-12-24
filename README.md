@@ -6,7 +6,7 @@ A C++20 header-only slot map with type-safe, bit-packed keys
 
 A slot map is an associative container where the **container generates keys** when you insert elements, unlike `std::map` where you provide the keys. Each key is a "generational index" - an index paired with a version counter - providing O(1) insertion, deletion, and lookup.
 
-The version counter solves the "dangling reference" problem. When you erase an element and later try to access it with an old key, the version mismatch safely returns "not found" instead of accessing garbage or a different element. When a slot is reused, its version increments, invalidating all previous keys that pointed to that slot.
+The version counter solves the "dangling reference" problem. When you erase an element and later try to access it with an old key, the version mismatch safely returns "not found" instead of accessing garbage or a different element. When a slot is reused, its version increments, invalidating all previous keys which pointed to that slot.
 
 Slot maps are commonly used in game engines (entity-component systems), resource managers, and any scenario requiring stable handles to objects that may be created and destroyed frequently.
 
@@ -44,28 +44,30 @@ players.use(key, [](Player & p) {
 });
 
 // Check validity
-if (players.contains(key)) {
-    // Element exists
-}
+assert(players.contains(key));
 
 // Remove
 players.erase(key);
 // key is now invalid - contains(key) returns false
+assert(not players.contains(key));
 ```
 
 ## Key Features
 
 - **Header-only**: Single include, no library to link
-- **Type-safe keys**: The phantom type parameter `T` prevents mixing keys from different SlotMaps at compile time
+- **Type-safe keys**: The slotmap value type is used as a phantom type parameter in the key type to prevent mixing keys from different SlotMaps at compile time
 - **Configurable bit layout**: Choose how many bits for index, version, and user data (must total 16, 32, 64, or 128)
 - **Strong types throughout**: `index_type`, `version_type`, `size_type` are distinct types, not raw integers
 - **Fixed capacity**: Maximum simultaneous elements = 2^IndexBits; maximum total insertions = 2^IndexBits × 2^VersionBits - 1
-- **No iterators**: Access is via `use()` callback or `for_each()` - deliberate design to prevent dangling iterator bugs
+- **No iterators**: Access is via `use()` callback or `for_each()` - deliberate design to prevent dangling iterator/reference/pointer bugs
 - **Null key safety**: The all-zeros key is reserved and never returned by `emplace()`. The null key can be obtained from `try_emplace()` when capacity is exhausted.
 
 ## How This Implementation Differs
 
 Compared to other slot map implementations (like the C++ standards proposal P0661 or SergeyMakeev/slot_map), this library makes different design choices.
+
+They are not necessarily better.
+They are different.
 
 ### Opinionated Design Choices
 
@@ -85,11 +87,16 @@ players.for_each([](Player & p) {
 });
 ```
 
+The standard range loop is nice.
+If you ask nicely, I may add support for a use case like that without exposing iterators in an easy to access manner.
+
 **2. Fixed lifetime**
 
 Once a slot exhausts its version bits, it's permanently dead. The map has a finite total lifetime (2^IndexBits × 2^VersionBits -1 insertions). This is intentional - it guarantees that old keys **never** accidentally refer to new data, even after billions of operations. Other implementations may wrap versions around.
 
 With a 16-bit version field, a single slot can be reused 65,536 times before becoming permanently dead.
+
+The number of version bits is completely under user control, and on a system that supports 128-bit integrals, the version can be set pretty large.
 
 **Note**: The very first slot, at index 0, starts with a version of 1, so it can only have 2^VersionBits -1 insertions. This is because we never want to generate a key where both the index and version are 0.
 
@@ -139,13 +146,21 @@ players.use(key, [](Player & p) {
 
 ### Trade-offs to Consider
 
-If you need STL-compatible iterators, this isn't the right choice. The `for_each()` callback pattern requires a different programming style.
+If you need STL-compatible iterators, this isn't the slotmap for you. The `for_each()` callback pattern requires a different programming style.
 
 If you need unlimited insertions over time, the fixed lifetime may not work. Calculate your requirements: with IndexBits=20 and VersionBits=12, you get 1,048,576 slots × 4,096 generations - 1 = 4,294,967,295 total insertions over the lifetime of the container, with a limit of 1,048,576 simultaneously active objects.
 
 If you need to store pointers or references to elements, the callback-based access requires refactoring your code. You must complete all operations on an element within the callback.
 
 But, if you need to store pointers or references, then why are you using a slotmap?
+
+I've heard slotmap keys referred to as safe pointers.
+I didn't say that.
+I heard it.
+From a friend.
+Yeah, that's the ticket.
+From a friend.
+
 
 ## Installation
 
@@ -424,6 +439,24 @@ auto user_data = tagged.user();  // Returns MyKey::user_type
 
 User bits travel with the key and are not validated by the container. They're useful for flags, priorities, or small metadata that you want to associate with the key.
 
+#### Default User Bits
+
+By default, keys returned by `emplace()` and `try_emplace()` have user bits set to 0. You can configure a different default:
+
+```cpp
+using namespace wjh::slotmap;
+
+// Keys will have user bits set to 0x7 by default
+using MyMap = SlotMap<Entity, IndexBits(20), VersionBits(8), UserBits(4),
+                      DefaultUserBits(0x7)>;
+
+MyMap entities;
+auto key = entities.emplace(/*...*/);
+assert(key.user().value == 0x7);  // Default user bits applied
+```
+
+The default value is automatically masked to fit within the configured user bits count.
+
 ## Null Key Handling
 
 The all-zeros key (index=0, version=0, user=0) is reserved as the null key:
@@ -506,7 +539,9 @@ Memory overhead per slab:
 
 ## Documentation
 
-- [DESIGN.md](/Users/jhagins/src/claude-play/slot_map/DESIGN.md) - Complete design specification and implementation notes
+- [DESIGN.md](/Users/jhagins/src/claude-play/slot_map/docs/DESIGN.md) - Complete design specification and implementation notes
+- [API.md](/Users/jhagins/src/claude-play/slot_map/docs/API.md) - Documentation about using the API
+- [DEVELOPER.md](/Users/jhagins/src/claude-play/slot_map/docs/DEVELOPER.md) - Documentation aimed at a slotmap developer or maintainer, with a bit more information on design and implementation details that matter to working with the code.
 
 ## License
 

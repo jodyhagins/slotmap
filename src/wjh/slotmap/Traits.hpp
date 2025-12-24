@@ -24,8 +24,14 @@ namespace wjh::slotmap {
  * @tparam nslots The slots per slab configuration
  *
  * @tparam alive_bit Whether to use an available live bit to speed up lookup.
+ *
+ * @tparam default_user Default value for user bits in newly created keys.
  */
-template <KeyC KeyT, SlotsPerSlab nslots, UseAliveBitForLookup alive_bit>
+template <
+    KeyC KeyT,
+    SlotsPerSlab nslots,
+    UseAliveBitForLookup alive_bit,
+    DefaultUserBits default_user = DefaultUserBits{0}>
 struct Traits
 : detail::storage_policy_t<KeyT, nslots, alive_bit>
 {
@@ -39,13 +45,19 @@ public:
     using index_type = typename key_type::index_type;
     using version_type = typename key_type::version_type;
     using user_type = typename key_type::user_type;
-
+    using naked_user_type = typename user_type::value_type;
     using naked_size_type = typename storage_policy::naked_size_type;
 
     static constexpr auto slots_per_slab = nslots;
     static constexpr bool allow_alive_bit = bool(alive_bit);
     static constexpr bool use_alive_bit_for_lookup =
         detail::has_alive_bit<Traits>();
+
+    /// Default value for user bits in keys returned by emplace/try_emplace.
+    /// The value is masked to fit within the configured user bits.
+    static constexpr naked_user_type default_user_bits =
+        static_cast<naked_user_type>(
+            static_cast<std::size_t>(default_user) & user_type::mask);
 };
 
 /**

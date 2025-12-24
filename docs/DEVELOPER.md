@@ -88,7 +88,7 @@ MSB                                   LSB
 
 The total bit count must be exactly 16, 32, 64, or 128. No other sizes are supported.
 
-The `storage_type` template in `detail.hpp` selects the underlying type:
+The `storage_type` template in `detail.hpp` selects the underlying integer type for the key's bits:
 
 ```cpp
 template <unsigned TotalBits>
@@ -103,6 +103,16 @@ template <> struct storage_type<128> { using type = unsigned __int128; };
 ```
 
 If you attempt to use an invalid total (e.g., 48 bits), compilation will fail due to no matching `storage_type` specialization.
+
+**Note:** The template parameters `IndexBits`, `VersionBits`, and `UserBits` are strong enum types (not raw `unsigned`). They are defined in `types.hpp`:
+
+```cpp
+enum class IndexBits : unsigned {};
+enum class VersionBits : unsigned {};
+enum class UserBits : unsigned {};
+```
+
+User-defined literals are available in `wjh::slotmap::literals`: `16_ib`, `16_vb`, `8_ub`.
 
 ### Strong Types (TypeBase)
 
@@ -213,6 +223,87 @@ static constexpr value_type safe_shift_left(value_type val, unsigned shift) noex
 ```
 
 Why? If `UserBits == 0`, then `user_shift == num_bits`, and shifting by the width of the type is undefined behavior in C++. These helpers ensure well-defined behavior for all bit configurations.
+
+### identifies_same_object()
+
+The `identifies_same_object()` method compares two keys ignoring their user bits:
+
+```cpp
+constexpr bool identifies_same_object(Key const & key) const noexcept {
+    constexpr auto mask = safe_shift_left(user_mask, user_shift);
+    return (Base::bits_ | mask) == (key.Base::bits_ | mask);
+}
+```
+
+**Implementation strategy**: We OR both keys with a mask that sets all user bits to 1, then compare. This effectively ignores the user bits in the comparison.
+
+**Why OR instead of AND?**: ANDing with an inverted mask would clear the user bits. ORing with the mask sets them all to 1. Both approaches make the user bits match, but ORing is slightly more efficient (no mask inversion needed).
+
+---
+
+## The Traits System
+
+The `Traits` template in `Traits.hpp` configures SlotMap behavior beyond what the Key type specifies.
+
+### Traits Template
+
+```cpp
+template <
+    KeyC KeyT,
+    SlotsPerSlab slots = SlotsPerSlab::Dynamic,
+    UseAliveBitForLookup alive_bit = UseAliveBitForLookup::Yes,
+    DefaultUserBits default_user = DefaultUserBits{0}>
+struct Traits {
+    using key_type = KeyT;
+    static constexpr SlotsPerSlab slots_per_slab = slots;
+    static constexpr UseAliveBitForLookup use_alive_bit_for_lookup = alive_bit;
+    static constexpr DefaultUserBits default_user_bits = default_user;
+};
+```
+
+### DefaultUserBits Implementation
+
+The `DefaultUserBits` value is applied in `SlotMap::make_key()`:
+
+```cpp
+key_type make_key(index_type idx, version_type ver) const noexcept {
+    if constexpr (key_type::user_bits > 0) {
+        constexpr auto default_user = static_cast<naked_user_type>(
+            std::to_underlying(traits_type::default_user_bits));
+        return key_type(idx, ver, user_type{default_user});
+    } else {
+        return key_type(idx, ver);
+    }
+}
+```
+
+This function is called by `emplace()` and `try_emplace()` when constructing the returned key.
+
+### Traits Detection
+
+SlotMap's template parameter can be either a Key type or a Traits type. Detection uses SFINAE:
+
+```cpp
+template <typename T>
+concept TraitsC = requires {
+    typename T::key_type;
+    { T::slots_per_slab } -> std::same_as<SlotsPerSlab const &>;
+    { T::use_alive_bit_for_lookup } -> std::same_as<UseAliveBitForLookup const &>;
+    { T::default_user_bits } -> std::same_as<DefaultUserBits const &>;
+};
+```
+
+If the template argument satisfies `TraitsC`, it's used directly. Otherwise, a default `Traits<KeyT>` is created.
+
+### Storage Policy (Single-Slab Optimization)
+
+When `SlotsPerSlab::All` is specified (or any value >= max slots), the implementation can optimize:
+
+1. **No slab vector**: A single slab pointer replaces the vector
+2. **No index calculations**: Direct slot access without slab lookup
+3. **Simpler free list**: All slots in contiguous memory
+
+This is detected via `constexpr` comparisons and selected at compile time using `if constexpr` branches throughout SlotMap's implementation.
 
 ---
 
@@ -956,19 +1047,69 @@ If copy succeeds:
 
 ## use() Implementation
 
-The `use()` function supports multiple callable signatures via `detail::invoke_use`.
+The `use()` function supports multiple callable signatures via callback concepts defined in `detail.hpp`.
+
+### Callback Concepts
+
+The library defines concepts to constrain valid callbacks:
+
+```cpp
+// Non-const use() callbacks
+template <typename F, typename KeyT, typename ValT>
+concept UseCallbackC = requires(F && f, KeyT k, ValT & v, Options & o) {
+    { std::invoke(std::forward<F>(f), k, v, o) };
+} || requires(F && f, KeyT k, ValT & v) {
+    { std::invoke(std::forward<F>(f), k, v) };
+} || requires(F && f, ValT & v, Options & o) {
+    { std::invoke(std::forward<F>(f), v, o) };
+} || requires(F && f, ValT & v) {
+    { std::invoke(std::forward<F>(f), v) };
+};
+
+// Const use() callbacks
+template <typename F, typename KeyT, typename ValT>
+concept ConstUseCallbackC = requires(F && f, KeyT k, ValT const & v) {
+    { std::invoke(std::forward<F>(f), k, v) };
+} || requires(F && f, ValT const & v) {
+    { std::invoke(std::forward<F>(f), v) };
+};
+```
 
 ### Non-const invoke_use
 
 This allows users to pass lambdas with any of these signatures:
-- `[](key_type k, T & v, Options & o) { ... }` - Full access with erase capability
-- `[](key_type k, T & v) { ... }` - Key and value
-- `[](T & v, Options & o) { ... }` - Value with erase capability
-- `[](T & v) { ... }` - Value only
+- `R(key_type k, T & v, Options & o)` - Full access with erase capability
+- `R(key_type k, T & v)` - Key and value
+- `R(T & v, Options & o)` - Value with erase capability
+- `R(T & v)` - Value only
+
+Where `R` can be `void` (returns `bool`) or any other type (returns `std::optional<R>`).
 
 ### Const invoke_use_const
 
 The const version is simpler because it doesn't support the `Options` parameter (since Options only has erase, which requires mutation).
+
+### Value Return Support
+
+Callbacks can return values, which are wrapped in `std::optional`:
+
+```cpp
+template <typename F>
+auto use(key_type key, F && func) {
+    // ...
+    if constexpr (std::is_void_v<invoke_result_t>) {
+        detail::invoke_use(func, key, slot.value(), opts);
+        // ... handle opts.erase ...
+        return true;  // Returns bool
+    } else {
+        auto result = detail::invoke_use(func, key, slot.value(), opts);
+        // ... handle opts.erase ...
+        return std::optional{std::move(result)};  // Returns std::optional<R>
+    }
+}
+```
+
+If the key is invalid, `use()` returns `false` (for void callbacks) or `std::nullopt` (for value-returning callbacks).
 
 ### Erase-After-Callback Pattern
 
@@ -1010,32 +1151,51 @@ This pattern ensures safe access - the callback can read/modify the element befo
 
 ## for_each Implementation
 
-The `for_each()` implementation handles multiple callable signatures via overload detection using `if constexpr` and `std::is_invocable_v`:
+The `for_each()` implementation uses the `ForEachCallbackC` concept to constrain valid callbacks:
 
 ```cpp
-namespace detail {
 template <typename F, typename KeyT, typename ValT>
-void
-invoke_for_each(F & func, KeyT key, ValT & val, [[maybe_unused]] Options & opt)
-{
-    if constexpr (std::is_invocable_v<F &, KeyT, ValT &, Options &>) {
-        std::invoke(func, key, val, opt);
-    } else if constexpr (std::is_invocable_v<F &, KeyT, ValT &>) {
-        std::invoke(func, key, val);
-    } else if constexpr (std::is_invocable_v<F &, ValT &, Options &>) {
-        std::invoke(func, val, opt);
+concept ForEachCallbackC = /* similar structure to UseCallbackC */;
+```
+
+### Supported Signatures
+
+Callbacks can have any of these signatures, with return type `void` or `bool`:
+- `void|bool (key_type k, T & v, Options & b)`
+- `void|bool (key_type k, T & v)`
+- `void|bool (T & v, Options & b)`
+- `void|bool (T & v)`
+
+### Early Exit via bool Return
+
+Callbacks can return `bool` to control iteration:
+
+```cpp
+template <typename F>
+size_type for_each(F && func) {
+    // ...
+    if constexpr (std::is_same_v<invoke_result_t, bool>) {
+        bool continue_iteration = detail::invoke_for_each(func, key, val, opts);
+        if (not continue_iteration || opts.stop) {
+            // Exit loop
+        }
     } else {
-        std::invoke(func, val);
+        detail::invoke_for_each(func, key, val, opts);
+        if (opts.stop) {
+            // Exit loop
+        }
     }
-}
+    // ...
 }
 ```
 
-This allows users to pass lambdas with any of these signatures:
-- `[](key_type k, T & v, Options & b) { ... }`
-- `[](key_type k, T & v) { ... }`
-- `[](T & v, Options & b) { ... }`
-- `[](T & v) { ... }`
+The implementation validates at compile-time that callbacks return either `void` or `bool`:
+
+```cpp
+static_assert(
+    std::is_void_v<invoke_result_t> || std::is_same_v<invoke_result_t, bool>,
+    "for_each callback must return void or bool");
+```
 
 The compiler selects the appropriate invocation at compile-time based on what the callable accepts.
 
@@ -1263,7 +1423,7 @@ Use `SUBCASE` for scenario variants:
 
 ```cpp
 TEST_CASE("SlotMap emplace") {
-    SlotMap<Key<int, 16, 16>> map;
+    SlotMap<Key<int, IndexBits(16), VersionBits(16)>> map;
 
     SUBCASE("returns valid key") {
         auto key = map.emplace(42);
@@ -1284,8 +1444,8 @@ Use `rc::check()` for invariant verification:
 
 ```cpp
 rc::check("insert-find roundtrip", [](std::vector<int> const & values) {
-    SlotMap<Key<int, 16, 16>> map;
-    std::vector<Key<int, 16, 16>> keys;
+    SlotMap<Key<int, IndexBits(16), VersionBits(16)>> map;
+    std::vector<Key<int, IndexBits(16), VersionBits(16)>> keys;
 
     for (auto v : values) {
         keys.push_back(map.emplace(v));
@@ -1305,7 +1465,7 @@ rc::check("insert-find roundtrip", [](std::vector<int> const & values) {
 
 Critical edge cases to test:
 
-1. **1-bit fields**: `Key<T, 1, 1>` (minimum possible configuration)
+1. **1-bit fields**: `Key<T, IndexBits(1), VersionBits(1)>` (minimum possible configuration)
 2. **Maximum capacity**: Fill entire index space, verify null key returned
 3. **Version exhaustion**: Emplace/erase until slot is dead, verify recycling
 4. **Single-slot slabs**: `SlotMap(size_type{1})` (edge case for iteration)
@@ -1331,7 +1491,7 @@ struct ThrowOnCopy {
 };
 
 TEST_CASE("SlotMap copy constructor exception safety") {
-    SlotMap<Key<ThrowOnCopy, 8, 8>> map;
+    SlotMap<Key<ThrowOnCopy, IndexBits(8), VersionBits(8)>> map;
     map.emplace(1);
     map.emplace(2);
 
@@ -1625,7 +1785,7 @@ free_list_head_ = 0
 ### Key Bit Layout (32-bit example)
 
 ```
-Key<int, 20, 10, 2> (20 index bits, 10 version bits, 2 user bits)
+Key<int, IndexBits(20), VersionBits(10), UserBits(2)> (20 index bits, 10 version bits, 2 user bits)
 
 Bit layout:
 31 30│29 ... 20│19 ... 0
