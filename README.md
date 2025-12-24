@@ -1,5 +1,9 @@
 # wjh::slotmap
 
+[![CI](https://github.com/jodyhagins/slotmap/actions/workflows/ci.yml/badge.svg)](https://github.com/jodyhagins/slotmap/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.cppreference.com/w/cpp/20)
+
 A C++20 header-only slot map with type-safe, bit-packed keys
 
 ## What is a Slot Map?
