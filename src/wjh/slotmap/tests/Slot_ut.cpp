@@ -271,9 +271,11 @@ TEST_CASE("Slot: version survives emplace/destroy cycle")
 // ============================================================================
 // Property-Based Tests
 // ============================================================================
+#ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wexit-time-destructors"
 #pragma clang diagnostic ignored "-Wglobal-constructors"
+#endif
 template <std::unsigned_integral IntT>
 auto const gen_uint_no_high_bit =
     rc::gen::suchThat(rc::gen::arbitrary<IntT>(), [](IntT x) {
@@ -281,7 +283,9 @@ auto const gen_uint_no_high_bit =
             IntT(1) << (std::numeric_limits<IntT>::digits - 1));
         return not (x & hibit);
     });
+#ifdef __clang__
 #pragma clang diagnostic pop
+#endif
 
 TEST_CASE("Slot: property-based version round-trip")
 {

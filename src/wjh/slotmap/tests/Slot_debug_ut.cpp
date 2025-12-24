@@ -259,9 +259,11 @@ TEST_CASE("Slot Debug: version and next independence")
 // Property-Based Tests for Debug Mode
 // ============================================================================
 
+#ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wexit-time-destructors"
 #pragma clang diagnostic ignored "-Wglobal-constructors"
+#endif
 template <std::unsigned_integral IntT>
 auto const gen_uint_no_high_bit =
     rc::gen::suchThat(rc::gen::arbitrary<IntT>(), [](IntT x) {
@@ -269,7 +271,9 @@ auto const gen_uint_no_high_bit =
             IntT(1) << (std::numeric_limits<IntT>::digits - 1));
         return not (x & hibit);
     });
+#ifdef __clang__
 #pragma clang diagnostic pop
+#endif
 
 #ifdef WJH_SLOTMAP_DEBUG_MODE
 TEST_CASE("Slot Debug: property-based version masking")
