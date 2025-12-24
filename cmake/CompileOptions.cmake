@@ -63,6 +63,7 @@ function(add_cxx_compile_options)
             -Wno-dollar-in-identifier-extension
             -Wno-comma                 # I don't want to disable this one, but the compiler issues warning when the comma operator is used within a decltype, where we know we only want the last result.
             -Wno-switch-default        # Interferes with other warnings, and when all cases of an enum are handled, a warning is generated saying that there is no default. But, if you add a default, a warning is generated saying that there is a default when all the cases are handled.
+            -Wno-unsafe-buffer-usage   # False positives on legitimate pointer arithmetic in Slab memory layout code.
     )
 
     set(WARNINGS ${COMMON_WARNINGS})
