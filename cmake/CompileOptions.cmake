@@ -7,7 +7,7 @@
 
 include(CheckCXXCompilerFlag)
 
-function(add_cxx_compile_options)
+function(slotmap_add_cxx_compile_options)
     set(COMMON_WARNINGS
             -Wall                # Enables most warnings.
             -Wextra              # Enables an extra set of warnings.
